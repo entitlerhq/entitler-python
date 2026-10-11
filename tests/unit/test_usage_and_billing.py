@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 import anyio
@@ -19,6 +20,7 @@ from entitler import (
     PendingCancel,
     PendingMove,
     PendingUnknown,
+    SubscribeStep,
     UnknownSource,
     UsageEventInput,
     UsageRefusedError,
@@ -30,7 +32,7 @@ from entitler.testing import answers
 from .support import KEY, Transport, ok
 
 CREDITS = Feature.metered("ai_credits")
-HELD = {
+HELD: dict[str, Any] = {
     "outcome": "held",
     "hold_id": "hld_1",
     "amount": 10,
@@ -51,12 +53,24 @@ def held(**changes: Any) -> dict[str, Any]:
 
 def bodies(transport: Transport) -> list[tuple[str, str, Any]]:
     return [
-        (r.method, r.url.path, json.loads(r.content) if r.content else None) for r in transport.requests
+        (r.method, r.url.path, json.loads(r.content) if r.content else None)
+        for r in transport.requests
     ]
 
 
 @pytest.mark.parametrize(
-    "outcome", ["recorded", "duplicate", "refused", "held", "settled", "released", "cancelled", "adjusted", "novel"]
+    "outcome",
+    [
+        "recorded",
+        "duplicate",
+        "refused",
+        "held",
+        "settled",
+        "released",
+        "cancelled",
+        "adjusted",
+        "novel",
+    ],
 )
 def test_every_usage_outcome_decodes(outcome: str, transport: Transport) -> None:
     transport.answers = [ok(answers.usage_result(outcome=outcome))]
@@ -64,7 +78,9 @@ def test_every_usage_outcome_decodes(outcome: str, transport: Transport) -> None
     assert result.outcome == outcome
 
 
-def test_start_hold_answers_a_handle_and_finish_settles_the_used_amount(transport: Transport) -> None:
+def test_start_hold_answers_a_handle_and_finish_settles_the_used_amount(
+    transport: Transport,
+) -> None:
     transport.answers = [held(), held(outcome="settled")]
     hold = server(transport).customer("u").start_hold(CREDITS, 10, idempotency_key="msg-1")
     assert (hold.id, hold.amount, hold.duplicate) == ("hld_1", 10, False)
@@ -93,7 +109,7 @@ def test_use_zero_settles_zero(transport: Transport) -> None:
     hold.use(0)
     hold.finish()
     assert bodies(transport)[1][2] == {"amount": 0}
-    with pytest.raises(ValueError, match="Pass the amount used as a whole number of 0 or more."):
+    with pytest.raises(ValueError, match=r"Pass the amount used as a whole number of 0 or more\."):
         hold.use(-1)
 
 
@@ -111,7 +127,9 @@ def test_an_excess_is_recorded_in_observe_mode_under_the_excess_key(transport: T
     assert transport.requests[2].headers["Idempotency-Key"] == "msg-1:excess"
 
 
-def test_an_expired_hold_records_the_whole_amount_under_the_excess_key(transport: Transport) -> None:
+def test_an_expired_hold_records_the_whole_amount_under_the_excess_key(
+    transport: Transport,
+) -> None:
     expired = {"status": 409, "body": answers.error("hold_expired")}
     transport.answers = [held(), expired, ok(answers.usage_result())]
     hold = server(transport).customer("u").start_hold(CREDITS, 10, idempotency_key="msg-1")
@@ -197,7 +215,9 @@ def test_start_hold_on_an_open_duplicate_answers_a_handle(transport: Transport) 
         {"outcome": "duplicate", "hold_id": None},
     ],
 )
-def test_start_hold_raises_on_a_replay_without_reading_the_clock(changes: dict[str, Any], transport: Transport) -> None:
+def test_start_hold_raises_on_a_replay_without_reading_the_clock(
+    changes: dict[str, Any], transport: Transport
+) -> None:
     transport.answers = [held(**changes)]
     with pytest.raises(UsageReplayedError) as raised:
         server(transport).customer("u").start_hold(CREDITS, 10, idempotency_key="k")
@@ -222,25 +242,32 @@ def test_with_hold_finishes_after_the_block(transport: Transport) -> None:
 
 def test_with_hold_settles_the_reported_amount_when_the_block_fails(transport: Transport) -> None:
     transport.answers = [held(), held(outcome="settled")]
-    with pytest.raises(KeyError):  # noqa: PT012 - the block is the work
-        with server(transport).customer("u").with_hold(CREDITS, 10, idempotency_key="k") as hold:
-            hold.use(3)
-            raise KeyError("work failed")
+    customer = server(transport).customer("u")
+    with (  # noqa: PT012 - the block is the work
+        pytest.raises(KeyError),
+        customer.with_hold(CREDITS, 10, idempotency_key="k") as hold,
+    ):
+        hold.use(3)
+        raise KeyError("work failed")
     assert bodies(transport)[1][2] == {"amount": 3}
 
 
 def test_with_hold_releases_when_the_block_fails_before_reporting(transport: Transport) -> None:
     transport.answers = [held(), held(outcome="released")]
-    with pytest.raises(KeyError), server(transport).customer("u").with_hold(CREDITS, 10, idempotency_key="k"):
+    with (
+        pytest.raises(KeyError),
+        server(transport).customer("u").with_hold(CREDITS, 10, idempotency_key="k"),
+    ):
         raise KeyError("work failed")
     assert bodies(transport)[1][0] == "DELETE"
 
 
 def test_with_hold_never_runs_the_block_after_a_refusal(transport: Transport) -> None:
     transport.answers = [held(outcome="refused", refusal="over_allowance")]
-    ran = []
-    with pytest.raises(UsageRefusedError), server(transport).customer("u").with_hold(
-        CREDITS, 10, idempotency_key="k"
+    ran: list[int] = []
+    with (
+        pytest.raises(UsageRefusedError),
+        server(transport).customer("u").with_hold(CREDITS, 10, idempotency_key="k"),
     ):
         ran.append(1)
     assert ran == []
@@ -248,9 +275,10 @@ def test_with_hold_never_runs_the_block_after_a_refusal(transport: Transport) ->
 
 def test_with_hold_raises_a_settlement_error_after_the_block(transport: Transport) -> None:
     transport.answers = [held(), {"status": 500}]
-    with pytest.raises(UsageSettlementError), server(transport).customer("u").with_hold(
-        CREDITS, 10, idempotency_key="k"
-    ) as hold:
+    with (
+        pytest.raises(UsageSettlementError),
+        server(transport).customer("u").with_hold(CREDITS, 10, idempotency_key="k") as hold,
+    ):
         hold.use(10)
 
 
@@ -288,11 +316,18 @@ async def test_async_holds_settle_even_when_the_task_is_cancelled() -> None:
 async def test_async_hold_handles_finish_release_and_dispose() -> None:
     transport = Transport()
     seen: list[Exception] = []
-    client = AsyncEntitlerServer(KEY, http_client=transport.async_client(), max_retries=0, on_error=seen.append)
+    client = AsyncEntitlerServer(
+        KEY, http_client=transport.async_client(), max_retries=0, on_error=seen.append
+    )
     customer = client.customer("u")
     transport.answers = [held(), held(outcome="settled")]
     hold = await customer.start_hold(CREDITS, 10, idempotency_key="a")
-    assert (hold.id, hold.amount, hold.duplicate, hold.result.outcome) == ("hld_1", 10, False, "held")
+    assert (hold.id, hold.amount, hold.duplicate, hold.result.outcome) == (
+        "hld_1",
+        10,
+        False,
+        "held",
+    )
     assert hold.expires_at.year == 2026
     hold.use(2)
     assert (await hold.finish()).outcome == "settled"
@@ -332,7 +367,9 @@ async def test_an_async_hold_that_runs_past_its_timeout_raises() -> None:
 
 def events(count: int, start: int = 0) -> list[UsageEventInput]:
     return [
-        UsageEventInput(customer=f"user_{i % 3}", feature=CREDITS, amount=i + 1, idempotency_key=f"evt-{i}")
+        UsageEventInput(
+            customer=f"user_{i % 3}", feature=CREDITS, amount=i + 1, idempotency_key=f"evt-{i}"
+        )
         for i in range(start, start + count)
     ]
 
@@ -340,10 +377,20 @@ def events(count: int, start: int = 0) -> list[UsageEventInput]:
 def batch_answer(request: httpx.Request) -> httpx.Response:
     sent = json.loads(request.content)["events"]
     results = [
-        {"index": i, "outcome": "recorded" if i % 2 == 0 else "duplicate", "id": f"u{i}", "late": False, "error": None}
+        {
+            "index": i,
+            "outcome": "recorded" if i % 2 == 0 else "duplicate",
+            "id": f"u{i}",
+            "late": False,
+            "error": None,
+        }
         for i in range(len(sent))
     ]
-    return httpx.Response(200, json=answers.usage_events_result(results=results), headers={"Idempotent-Replayed": "true"})
+    return httpx.Response(
+        200,
+        json=answers.usage_events_result(results=results),
+        headers={"Idempotent-Replayed": "true"},
+    )
 
 
 def test_batches_split_at_500_and_answer_in_input_order(transport: Transport) -> None:
@@ -358,7 +405,11 @@ def test_batches_split_at_500_and_answer_in_input_order(transport: Transport) ->
 
 
 def test_a_batch_request_that_fails_answers_its_events_error(transport: Transport) -> None:
-    transport.answers = [{"failure": "connection"}, {"failure": "timeout"}, {"status": 422, "body": answers.error("idempotency_mismatch", "Mismatch.")}]
+    transport.answers = [
+        {"failure": "connection"},
+        {"failure": "timeout"},
+        {"status": 422, "body": answers.error("idempotency_mismatch", "Mismatch.")},
+    ]
     transport.fallback = batch_answer
     result = server(transport).record_usage_batch(events(1600))
     codes = [r.error.code if r.error else None for r in result.results]
@@ -380,7 +431,9 @@ def test_a_batch_request_that_fails_answers_its_events_error(transport: Transpor
         [{"index": 0}, {"index": 1}, {"index": 2}],
     ],
 )
-def test_a_batch_answer_not_covering_each_event_once_is_invalid(results: list[dict[str, Any]], transport: Transport) -> None:
+def test_a_batch_answer_not_covering_each_event_once_is_invalid(
+    results: list[dict[str, Any]], transport: Transport
+) -> None:
     full = [{"outcome": "recorded", "id": None, "late": False, "error": None, **r} for r in results]
     transport.answers = [ok(answers.usage_events_result(results=full))]
     result = server(transport).record_usage_batch(events(2))
@@ -396,17 +449,34 @@ def test_a_batch_with_nothing_to_send_sends_nothing(transport: Transport) -> Non
     assert result.results[0].idempotency_key == "k"
 
 
+STEPS: list[tuple[dict[str, Any], str, Callable[[SubscribeStep], bool]]] = [
+    (answers.subscribe_step(), NextStep.DONE, lambda s: s.change is not None and s.change.changed),
+    (
+        answers.subscribe_step(next="pay"),
+        NextStep.PAY,
+        lambda s: s.url == "https://checkout.example.com/pay",
+    ),
+    (
+        answers.subscribe_step(next="confirming"),
+        NextStep.CONFIRMING,
+        lambda s: s.change is None,
+    ),
+    (
+        answers.subscribe_step(next="manage", billed_by="google"),
+        NextStep.MANAGE,
+        lambda s: s.billed_by == "google",
+    ),
+    (answers.subscribe_step(next="wire_transfer"), "wire_transfer", lambda s: s.url is None),
+]
+
+
 @pytest.mark.parametrize(
     ("body", "next_step", "check"),
-    [
-        (answers.subscribe_step(), NextStep.DONE, lambda s: s.change.changed),
-        (answers.subscribe_step(next="pay"), NextStep.PAY, lambda s: s.url == "https://checkout.example.com/pay"),
-        (answers.subscribe_step(next="confirming"), NextStep.CONFIRMING, lambda s: s.change is None),
-        (answers.subscribe_step(next="manage", billed_by="google"), NextStep.MANAGE, lambda s: s.billed_by == "google"),
-        (answers.subscribe_step(next="wire_transfer"), "wire_transfer", lambda s: s.url is None),
-    ],
+    STEPS,
 )
-def test_every_subscribe_step(body: dict[str, Any], next_step: str, check: Any, transport: Transport) -> None:
+def test_every_subscribe_step(
+    body: dict[str, Any], next_step: str, check: Any, transport: Transport
+) -> None:
     transport.answers = [ok(body)]
     step = server(transport).customer("u").subscribe("pro")
     assert step.next == next_step
@@ -415,7 +485,9 @@ def test_every_subscribe_step(body: dict[str, Any], next_step: str, check: Any, 
 
 def test_a_declined_payment_is_an_api_error(transport: Transport) -> None:
     payment = {"status": "declined", "url": None}
-    transport.answers = [{"status": 402, "body": answers.error("payment_required", "Declined.", payment=payment)}]
+    transport.answers = [
+        {"status": 402, "body": answers.error("payment_required", "Declined.", payment=payment)}
+    ]
     with pytest.raises(APIError) as raised:
         server(transport).customer("u").subscribe("pro")
     assert raised.value.payment is not None
@@ -444,8 +516,15 @@ def test_every_pending_change(pending: dict[str, Any], kind: type, transport: Tr
 
 
 def test_sources_of_every_kind_decode(transport: Transport) -> None:
-    sources = [
-        {"type": "plan", "plan": "pro", "name": "Pro", "version": 1, "byDefault": False, "value": True},
+    sources: list[dict[str, Any]] = [
+        {
+            "type": "plan",
+            "plan": "pro",
+            "name": "Pro",
+            "version": 1,
+            "byDefault": False,
+            "value": True,
+        },
         {"type": "addon", "plan": "a", "name": "A", "version": 1, "quantity": 2, "value": 5},
         {"type": "grant", "grant": "g", "until": None, "value": "unlimited"},
         {"type": "banked", "value": -3},
@@ -454,7 +533,14 @@ def test_sources_of_every_kind_decode(transport: Transport) -> None:
     ]
     transport.answers = [ok(answers.check(sources=sources))]
     check = server(transport).customer("u").check("sso")
-    assert [s.type for s in check.sources] == ["plan", "addon", "grant", "banked", "group", "promotion"]
+    assert [s.type for s in check.sources] == [
+        "plan",
+        "addon",
+        "grant",
+        "banked",
+        "group",
+        "promotion",
+    ]
     assert isinstance(check.sources[-1], UnknownSource)
 
 

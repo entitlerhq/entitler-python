@@ -6,7 +6,7 @@ import json
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -90,7 +90,9 @@ class Transport:
         self.requests.append(request)
         if self.answers:
             answer = self.answers.pop(0)
-            return answer(request) if callable(answer) else respond(answer, request)
+            if callable(answer):
+                return cast("httpx.Response", answer(request))
+            return respond(answer, request)
         if self.fallback is not None:
             return self.fallback(request)
         raise AssertionError(f"No answer queued for {request.method} {request.url}")
@@ -117,7 +119,7 @@ ROUTES: list[tuple[str, str, Callable[[], dict[str, Any]]]] = []
 def _routes() -> list[tuple[str, str, Callable[[], dict[str, Any]]]]:
     from entitler.testing import answers
 
-    held = {"hold_id": "hld_1", "expires_at": "2026-07-01T09:35:00.000Z"}
+    held: dict[str, Any] = {"hold_id": "hld_1", "expires_at": "2026-07-01T09:35:00.000Z"}
     return [
         ("GET", r"/customers/[^/]+/entitlements/[^/]+", answers.check),
         ("GET", r"/customers/[^/]+/entitlements", answers.entitlements),
@@ -132,12 +134,32 @@ def _routes() -> list[tuple[str, str, Callable[[], dict[str, Any]]]]:
         ("GET", r"/pricing/features", answers.feature_list),
         ("GET", r"/keys/self", answers.credential_self),
         ("POST", r"/customers", answers.customer_detail),
-        ("POST", r"/customers/[^/]+/usage/holds", lambda: answers.usage_result(outcome="held", **held)),
-        ("POST", r"/customers/[^/]+/usage/holds/[^/]+/settle", lambda: answers.usage_result(outcome="settled")),
-        ("DELETE", r"/customers/[^/]+/usage/holds/[^/]+", lambda: answers.usage_result(outcome="released")),
+        (
+            "POST",
+            r"/customers/[^/]+/usage/holds",
+            lambda: answers.usage_result(outcome="held", **held),
+        ),
+        (
+            "POST",
+            r"/customers/[^/]+/usage/holds/[^/]+/settle",
+            lambda: answers.usage_result(outcome="settled"),
+        ),
+        (
+            "DELETE",
+            r"/customers/[^/]+/usage/holds/[^/]+",
+            lambda: answers.usage_result(outcome="released"),
+        ),
         ("POST", r"/customers/[^/]+/usage", answers.usage_result),
-        ("DELETE", r"/customers/[^/]+/usage/[^/]+", lambda: answers.usage_result(outcome="cancelled")),
-        ("POST", r"/customers/[^/]+/meters/[^/]+/adjustments", lambda: answers.usage_result(outcome="adjusted")),
+        (
+            "DELETE",
+            r"/customers/[^/]+/usage/[^/]+",
+            lambda: answers.usage_result(outcome="cancelled"),
+        ),
+        (
+            "POST",
+            r"/customers/[^/]+/meters/[^/]+/adjustments",
+            lambda: answers.usage_result(outcome="adjusted"),
+        ),
         ("POST", r"/customers/[^/]+/snapshots", answers.issued_snapshot),
         ("POST", r"/customers/[^/]+/tokens", answers.issued_token),
         ("POST", r"/customers/[^/]+/subscription", answers.subscribe_step),
@@ -148,7 +170,7 @@ def _routes() -> list[tuple[str, str, Callable[[], dict[str, Any]]]]:
         ("DELETE", r"/customers/[^/]+/grants/[^/]+", answers.grant_change),
         ("PUT", r"/customers/[^/]+", answers.registered_customer),
         ("PATCH", r"/customers/[^/]+", answers.customer_summary),
-        ("DELETE", r"/customers/[^/]+", lambda: {}),
+        ("DELETE", r"/customers/[^/]+", dict),
         ("POST", r"/usage/events", answers.usage_events_result),
     ]
 
@@ -169,7 +191,13 @@ def api(request: httpx.Request) -> httpx.Response:
             if pattern == r"/usage/events":
                 sent = json.loads(request.content)["events"]
                 results = [
-                    {"index": i, "outcome": "recorded", "id": f"use_{i}", "late": False, "error": None}
+                    {
+                        "index": i,
+                        "outcome": "recorded",
+                        "id": f"use_{i}",
+                        "late": False,
+                        "error": None,
+                    }
                     for i in range(len(sent))
                 ]
                 return httpx.Response(200, json=answers.usage_events_result(results=results))

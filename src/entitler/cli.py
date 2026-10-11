@@ -51,7 +51,8 @@ _LINE_BREAK = re.compile("\r\n|[\r\n\x85\u2028\u2029]")
 _UNSAFE = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029]")
 _CONTROL = re.compile("[\x00-\x1f\x7f-\x9f]")
 _CONSTANT = re.compile(
-    r"^([A-Za-z_][A-Za-z0-9_]*): Feature\[\w+\] = Feature(?:\.\w+)?\(\s*(\"(?:[^\"\\\n]|\\.)*\")",
+    r"^([A-Za-z_][A-Za-z0-9_]*): Feature\[\w+\] = Feature(?:\.\w+)?\(\s*"
+    r"(\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*')",
     re.MULTILINE,
 )
 _KINDS = {
@@ -76,9 +77,10 @@ def _escape(char: str) -> str:
 
 
 def literal(text: str) -> str:
-    """A Python string literal for `text`: quotes, backslashes and control characters escaped."""
-    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
-    return '"' + _UNSAFE.sub(lambda m: _escape(m.group()), escaped) + '"'
+    """A Python string literal for `text`, quoted as the formatter would, its specials escaped."""
+    quote = "'" if '"' in text and "'" not in text else '"'
+    escaped = text.replace("\\", "\\\\").replace(quote, "\\" + quote)
+    return quote + _UNSAFE.sub(lambda m: _escape(m.group()), escaped) + quote
 
 
 def _doc_line(text: str) -> str:

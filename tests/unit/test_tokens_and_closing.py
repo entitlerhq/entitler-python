@@ -36,7 +36,9 @@ def token(iat: int | None, exp: int, tag: str = "x") -> str:
     return f"eyJhbGciOiJIUzI1NiJ9.{middle}.{tag}"
 
 
-def test_the_provider_is_asked_once_then_again_near_expiry(transport: Transport, clock: Clock) -> None:
+def test_the_provider_is_asked_once_then_again_near_expiry(
+    transport: Transport, clock: Clock
+) -> None:
     wired(transport)
     calls: list[int] = []
 
@@ -54,7 +56,9 @@ def test_the_provider_is_asked_once_then_again_near_expiry(transport: Transport,
     assert transport.requests[-1].headers["Authorization"].endswith(".2")
 
 
-def test_a_sixty_second_token_is_asked_at_most_once_per_request(transport: Transport, clock: Clock) -> None:
+def test_a_sixty_second_token_is_asked_at_most_once_per_request(
+    transport: Transport, clock: Clock
+) -> None:
     wired(transport)
     calls: list[int] = []
 
@@ -73,7 +77,9 @@ def test_a_sixty_second_token_is_asked_at_most_once_per_request(transport: Trans
     "answer",
     ["", "   ", "not-a-jwt", "a.b.c", token(NOW, NOW), token(NOW + 10, NOW), 42],
 )
-def test_blank_and_unreadable_tokens_fail_with_token_error(answer: Any, transport: Transport) -> None:
+def test_blank_and_unreadable_tokens_fail_with_token_error(
+    answer: Any, transport: Transport
+) -> None:
     wired(transport)
     client = EntitlerClient(token=lambda: answer, http_client=transport.client())
     with pytest.raises(TokenError):
@@ -85,7 +91,9 @@ def test_a_failing_provider_is_a_token_error_with_its_cause(transport: Transport
     def provider() -> str:
         raise ConnectionError("no network")
 
-    client = EntitlerClient(key="ent_pk_test_x", identity_token=provider, http_client=transport.client())
+    client = EntitlerClient(
+        key="ent_pk_test_x", identity_token=provider, http_client=transport.client()
+    )
     with pytest.raises(TokenError) as raised:
         client.me.check("sso")
     assert isinstance(raised.value.__cause__, ConnectionError)
@@ -99,7 +107,7 @@ def test_a_failed_refresh_is_not_kept(transport: Transport, clock: Clock) -> Non
         answer = answers_given.pop(0)
         if isinstance(answer, Exception):
             raise answer
-        return answer
+        return str(answer)
 
     client = EntitlerClient(token=provider, http_client=transport.client())
     with pytest.raises(TokenError):
@@ -109,7 +117,9 @@ def test_a_failed_refresh_is_not_kept(transport: Transport, clock: Clock) -> Non
 
 def test_one_retry_after_401_with_a_new_token(transport: Transport, clock: Clock) -> None:
     tokens = [token(NOW, NOW + 3600, "two"), token(NOW, NOW + 3600, "one")]
-    client = EntitlerClient(token=lambda: tokens.pop(), http_client=transport.client(), max_retries=0)
+    client = EntitlerClient(
+        token=lambda: tokens.pop(), http_client=transport.client(), max_retries=0
+    )
     transport.answers = [{"status": 401}, ok(answers.check())]
     client.me.check("sso")
     assert [r.headers["Authorization"][-3:] for r in transport.requests] == ["one", "two"]
@@ -117,7 +127,9 @@ def test_one_retry_after_401_with_a_new_token(transport: Transport, clock: Clock
 
 def test_503_then_401_then_200(transport: Transport, clock: Clock) -> None:
     tokens = [token(NOW, NOW + 3600, "two"), token(NOW, NOW + 3600, "one")]
-    client = EntitlerClient(token=lambda: tokens.pop(), http_client=transport.client(), max_retries=1)
+    client = EntitlerClient(
+        token=lambda: tokens.pop(), http_client=transport.client(), max_retries=1
+    )
     transport.answers = [{"status": 503}, {"status": 401}, ok(answers.check())]
     assert client.me.check("sso").entitled
     assert len(transport.requests) == 3
@@ -139,7 +151,9 @@ def test_403_credential_not_allowed_is_never_refreshed(transport: Transport) -> 
     assert len(transport.requests) == 1
 
 
-def test_a_401_after_a_newer_token_uses_it_without_asking(transport: Transport, clock: Clock) -> None:
+def test_a_401_after_a_newer_token_uses_it_without_asking(
+    transport: Transport, clock: Clock
+) -> None:
     wired(transport)
     calls: list[int] = []
 
@@ -212,7 +226,7 @@ async def test_a_hanging_provider_times_out_as_a_token_error() -> None:
         raise AssertionError
 
     client = AsyncEntitlerClient(token=provider, timeout=0.05)
-    with pytest.raises(TokenError, match="did not answer within 0.05 seconds"):
+    with pytest.raises(TokenError, match=r"did not answer within 0\.05 seconds"):
         await client.me.check("sso")
     await client.aclose()
 
@@ -375,7 +389,9 @@ async def test_async_clients_work_as_context_managers() -> None:
         assert created.customer.external_id == "user_1"
         batch = await server.record_usage_batch([])
         assert batch.results == ()
-    async with AsyncEntitlerClient(key="ent_pk_test_x", http_client=transport.async_client()) as client:
+    async with AsyncEntitlerClient(
+        key="ent_pk_test_x", http_client=transport.async_client()
+    ) as client:
         assert (await client.pricing()).plans == ()
         with pytest.raises(TypeError, match="Sign the customer in first"):
             await client.scopes()
@@ -384,7 +400,10 @@ async def test_async_clients_work_as_context_managers() -> None:
 
 def test_key_only_clients_refuse_signed_in_members() -> None:
     client = EntitlerClient(key="ent_pk_test_x")
-    message = "Sign the customer in first: create the client with (token=...) or (key=..., identity_token=...)."
+    message = (
+        "Sign the customer in first: create the client with (token=...) or "
+        "(key=..., identity_token=...)."
+    )
     with pytest.raises(TypeError) as raised:
         client.me  # noqa: B018 - reading the member raises
     assert str(raised.value) == message
@@ -393,7 +412,9 @@ def test_key_only_clients_refuse_signed_in_members() -> None:
     with pytest.raises(TypeError, match="Sign the customer in first"):
         client.scopes()
     signed_in = EntitlerClient(token="a.b.c")
-    with pytest.raises(TypeError, match=r"Read the signed-in customer's pricing with me.pricing\(\)."):
+    with pytest.raises(
+        TypeError, match=r"Read the signed-in customer's pricing with me.pricing\(\)."
+    ):
         signed_in.pricing()
     assert client.kind == "publishable"
     assert signed_in.kind == "token"
@@ -425,7 +446,7 @@ def test_options_are_checked() -> None:
 
     with pytest.raises(TypeError, match="AsyncEntitlerServer"):
         EntitlerServer(KEY, cache=AsyncStore())  # type: ignore[arg-type]
-    AsyncEntitlerServer(KEY, cache=AsyncStore())  # type: ignore[arg-type]
+    AsyncEntitlerServer(KEY, cache=AsyncStore())
     assert repr(EntitlerServer(KEY, base_url="http://localhost:8787/")) == (
         "EntitlerServer(base_url='http://localhost:8787', kind='server')"
     )

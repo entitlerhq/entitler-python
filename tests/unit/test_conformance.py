@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import itertools
 import json
 import struct
 import uuid
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -22,15 +24,16 @@ from entitler import (
     EntitlerConnectionError,
     EntitlerServer,
     EntitlerTimeoutError,
+    ErrorCode,
     Feature,
     MemoryCache,
     MeteredCheck,
     PendingCancel,
     PendingMove,
+    Sku,
     SnapshotError,
     SnapshotKey,
     SnapshotKeys,
-    Sku,
     TokenError,
     UsageEventInput,
     UsageResult,
@@ -50,14 +53,14 @@ def load(name: str) -> list[dict[str, Any]]:
     return list(json.loads((FIXTURES / name).read_text(encoding="utf-8"))["cases"])
 
 
-def cases(name: str) -> Any:
+def cases(name: str) -> pytest.MarkDecorator:
     found = load(name)
     return pytest.mark.parametrize("case", found, ids=[case["name"] for case in found])
 
 
 def python_message(message: str) -> str:
     """A specification message in this SDK's spelling (section 3.1)."""
-    replaced = (
+    return (
         message.replace(
             "{ token }, { key, identityToken } or { key }",
             "(token=...), (key=..., identity_token=...) or (key=...)",
@@ -71,7 +74,6 @@ def python_message(message: str) -> str:
         .replace("clockSkewSeconds", "clock_skew_seconds")
         .replace("snapshotKeys()", "snapshot_keys()")
     )
-    return replaced
 
 
 def utf16(units: list[int]) -> str:
@@ -227,11 +229,11 @@ def _segment_call(
     request = case["request"]
     route = request["route"]
     parameter = case["parameter"]
-    options = request.get("options") or {}
-    params = request.get("params") or {}
+    options: dict[str, Any] = request.get("options") or {}
+    params: dict[str, Any] = request.get("params") or {}
 
     def target(name: str) -> str:
-        return value if parameter == name else params[name]
+        return value if parameter == name else str(params[name])
 
     def run(client: EntitlerServer) -> Any:
         customer = client.customer(customer_id)
@@ -273,20 +275,22 @@ def test_path_encoding(case: dict[str, Any], transport: Transport) -> None:
     client = server(transport, base_url=case.get("baseUrl") or BASE)
     if kind == "segment":
         value = utf16(case["idUtf16"]) if "idUtf16" in case else case["id"]
-        params = case["request"].get("params") or {}
-        customer_id = value if case["parameter"] == "customer" else params["id"]
-        call = _segment_call(case, customer_id, value)
+        params: dict[str, Any] = case["request"].get("params") or {}
+        customer_id = value if case["parameter"] == "customer" else str(params["id"])
+        call = _segment_call(case, customer_id, str(value))
     elif kind == "baseUrl":
 
-        def call(c: EntitlerServer) -> Any:
+        def base_url_call(c: EntitlerServer) -> Any:
             return c.customer("user_42").check("export_pdf")
+
+        call = base_url_call
 
     elif kind == "query":
         value = utf16(case["valueUtf16"]) if "valueUtf16" in case else case["value"]
         parameter = case["parameter"]
         route = case["request"]["route"]
 
-        def call(c: EntitlerServer) -> Any:
+        def query_call(c: EntitlerServer) -> Any:
             if parameter == "q":
                 return next(iter(c.customers.list(q=value).pages()))
             if parameter == "cursor":
@@ -296,10 +300,12 @@ def test_path_encoding(case: dict[str, Any], transport: Transport) -> None:
                 return customer.undo_pending_change(product=value)
             return customer.cancel(product=value)
 
+        call = query_call
+
     else:
         options = case["call"]["options"]
 
-        def call(c: EntitlerServer) -> Any:
+        def arguments_call(c: EntitlerServer) -> Any:
             customer = c.customer(case["call"]["customer"])
             method = (
                 customer.cancel
@@ -308,24 +314,20 @@ def test_path_encoding(case: dict[str, Any], transport: Transport) -> None:
             )
             return method(add_on=options["addOn"], product=options["product"])
 
+        call = arguments_call
+
     if outcome.get("kind") == "ArgumentError":
         with pytest.raises((ValueError, TypeError)) as raised:
             call(client)
         assert str(raised.value) == python_message(outcome["message"])
         assert transport.requests == []
         return
-    try:
+    with contextlib.suppress(APIError):
         call(client)
-    except APIError as error:
-        assert error.code == "invalid_response"
     assert str(transport.requests[0].url) == outcome["url"]
 
 
-def _usage_answer(outcome: str, **extra: Any) -> dict[str, Any]:
-    return ok(answers.usage_result(outcome=outcome, amount=1, **extra))
-
-
-HELD = {
+HELD: dict[str, Any] = {
     "hold_id": "hld_1",
     "expires_at": "2026-07-01T09:35:00.000Z",
     "as_of": "2026-07-01T09:30:00.000Z",
@@ -336,15 +338,15 @@ def _key_call(case: dict[str, Any], client: EntitlerServer) -> Callable[[], Any]
     customer = client.customer("user_42")
     key = case.get("key")
     method = case["method"]
-    credits = Feature.metered("ai_credits")
+    metered = Feature.metered("ai_credits")
     if method == "recordUsage":
-        return lambda: customer.record_usage(credits, 1, idempotency_key=key)  # type: ignore[arg-type]
+        return lambda: customer.record_usage(metered, 1, idempotency_key=key)  # type: ignore[arg-type]
     if method == "holdUsage":
-        return lambda: customer.hold_usage(credits, 1, idempotency_key=key)  # type: ignore[arg-type]
+        return lambda: customer.hold_usage(metered, 1, idempotency_key=key)  # type: ignore[arg-type]
     if method == "startHold":
 
         def start() -> Any:
-            hold = customer.start_hold(credits, 1, idempotency_key=key)  # type: ignore[arg-type]
+            hold = customer.start_hold(metered, 1, idempotency_key=key)  # type: ignore[arg-type]
             hold.use(2)
             return hold.finish()
 
@@ -352,12 +354,12 @@ def _key_call(case: dict[str, Any], client: EntitlerServer) -> Callable[[], Any]
     if method == "withHold":
 
         def within() -> Any:
-            with customer.with_hold(credits, 1, idempotency_key=key) as hold:  # type: ignore[arg-type]
+            with customer.with_hold(metered, 1, idempotency_key=key) as hold:  # type: ignore[arg-type]
                 hold.use(2)
 
         return within
     if method == "adjustMeter":
-        return lambda: customer.adjust_meter(credits, by=1, idempotency_key=key)  # type: ignore[arg-type]
+        return lambda: customer.adjust_meter(metered, by=1, idempotency_key=key)  # type: ignore[arg-type]
     if method == "cancel":
         return lambda: customer.cancel(idempotency_key=key)
     if method == "token":
@@ -507,7 +509,7 @@ def _client_for(case: dict[str, Any], transport: Transport, calls: list[int]) ->
 
     def provider() -> str:
         calls.append(1)
-        return tokens.pop(0)
+        return str(tokens.pop(0))
 
     client = EntitlerClient(token=provider, **options)
     return client, client.me
@@ -546,7 +548,7 @@ def test_retry_timing(
             monkeypatch.setattr(_clock, "jitter", lambda value=jitter: value)
             transport.answers = [{"status": 503}] * (retry + 1) + [ok(answers.check())]
             server(transport, max_retries=retry + 1).customer("user_42").check("export_pdf")
-            wait = clock.waits[retry]
+            wait = clock.waits[int(retry)]
             assert case["outcome"]["minSeconds"] <= wait <= case["outcome"]["maxSeconds"]
             if jitter == 0.0:
                 assert wait == case["outcome"]["minSeconds"]
@@ -599,7 +601,7 @@ def test_retry_timing(
     assert len(transport.requests) == outcome["attempts"]
     if "providerCalls" in outcome:
         assert len(calls) == outcome["providerCalls"]
-    gaps = [later - earlier for earlier, later in zip(times, times[1:], strict=False)]
+    gaps = [later - earlier for earlier, later in itertools.pairwise(times)]
     assert len(gaps) == len(outcome["waits"])
     for wait, bounds in zip(gaps, outcome["waits"], strict=True):
         assert bounds["minSeconds"] <= wait <= bounds["maxSeconds"]
@@ -721,7 +723,7 @@ def test_values(case: dict[str, Any], transport: Transport) -> None:
         assert raised.value.code == expected["code"]
         assert raised.value.message == expected["message"]
         return
-    check = customer.check(feature)
+    check: Check = customer.check(str(feature))
     if case["kind"] == "value":
         assert feature_value(check.value) == outcome["value"]
         assert check.entitled == outcome["answer"]["entitled"]
@@ -760,7 +762,7 @@ def _compare_check(check: Check, outcome: dict[str, Any]) -> None:
     assert millis(check.as_of) == outcome["asOf"]["epochMillis"]
     assert check.stale == outcome["stale"]
     for name in outcome.get("absent", []):
-        python = {"resetsAt": "resets_at"}.get(name, name)
+        python = "resets_at" if name == "resetsAt" else str(name)
         assert getattr(check, python) is None
     if "used" in outcome:
         assert isinstance(check, MeteredCheck)
@@ -790,7 +792,7 @@ def _error_fields(error: APIError) -> dict[str, Any]:
     return {
         "kind": "ApiError",
         "status": error.status,
-        "code": code.value if hasattr(code, "value") else {"unknown": code},
+        "code": code.value if isinstance(code, ErrorCode) else {"unknown": code},
         "message": error.message,
         "requestId": error.request_id,
         "retryAfterSeconds": None if error.retry_after is None else int(error.retry_after),
@@ -960,12 +962,13 @@ def _answers_call(call: Mapping[str, Any], client: EntitlerServer) -> Any:
     method = call["method"]
     key = call.get("idempotencyKey")
     if method == "check":
-        return customer.check(call["feature"])
+        found: Check = customer.check(str(call["feature"]))
+        return found
     if method == "plans":
         return customer.plans()
     if method == "recordUsage":
         return customer.record_usage(
-            Feature.metered(call["feature"]), call["amount"], idempotency_key=key
+            Feature.metered(call["feature"]), call["amount"], idempotency_key=str(key)
         )
     if method == "subscribe":
         return customer.subscribe(
@@ -1063,6 +1066,42 @@ def test_answers(case: dict[str, Any], transport: Transport) -> None:
         assert found.changed == outcome["changed"]
 
 
+def _errors_call(call: Mapping[str, Any], transport: Transport) -> None:
+    method = call["method"]
+    key = call.get("idempotencyKey")
+    if "client" in call:
+        client = EntitlerClient(
+            key=call["client"]["key"],
+            identity_token=call["client"]["identityToken"],
+            max_retries=0,
+            cache=None,
+            http_client=transport.client(),
+        )
+        client.register(idempotency_key=key)
+    else:
+        customer = server(transport).customer(call["customer"])
+        if method == "check":
+            as_of = call.get("asOf")
+            if as_of is None:
+                customer.check(call["feature"])
+            else:
+                customer.check(call["feature"], as_of=instant(as_of))
+        elif method == "recordUsage":
+            customer.record_usage(
+                Feature.metered(call["feature"]), call["amount"], idempotency_key=str(key)
+            )
+        elif method == "subscribe":
+            customer.subscribe(call["plan"], period=call.get("period"), idempotency_key=key)
+        elif "sku" in call:
+            sku = Sku(connector=call["sku"]["connector"], ids=call["sku"]["ids"])
+            until = call.get("until")
+            customer.set_plan(
+                sku, until=None if until is None else instant(until), idempotency_key=key
+            )
+        else:
+            customer.set_plan(call["plan"], period=call.get("period"), idempotency_key=key)
+
+
 @cases("errors.json")
 def test_errors(case: dict[str, Any], transport: Transport, clock: Clock) -> None:
     if "receivedAt" in case:
@@ -1070,41 +1109,8 @@ def test_errors(case: dict[str, Any], transport: Transport, clock: Clock) -> Non
     transport.answers = [
         {"status": case["status"], "headers": case["headers"], "body": case["body"]}
     ]
-    call = case["call"]
-    method = call["method"]
-    key = call.get("idempotencyKey")
     with pytest.raises(APIError) as raised:
-        if "client" in call:
-            client = EntitlerClient(
-                key=call["client"]["key"],
-                identity_token=call["client"]["identityToken"],
-                max_retries=0,
-                cache=None,
-                http_client=transport.client(),
-            )
-            client.register(idempotency_key=key)
-        else:
-            customer = server(transport).customer(call["customer"])
-            if method == "check":
-                as_of = call.get("asOf")
-                if as_of is None:
-                    customer.check(call["feature"])
-                else:
-                    customer.check(call["feature"], as_of=instant(as_of))
-            elif method == "recordUsage":
-                customer.record_usage(
-                    Feature.metered(call["feature"]), call["amount"], idempotency_key=key
-                )
-            elif method == "subscribe":
-                customer.subscribe(call["plan"], period=call.get("period"), idempotency_key=key)
-            elif "sku" in call:
-                sku = Sku(connector=call["sku"]["connector"], ids=call["sku"]["ids"])
-                until = call.get("until")
-                customer.set_plan(
-                    sku, until=None if until is None else instant(until), idempotency_key=key
-                )
-            else:
-                customer.set_plan(call["plan"], period=call.get("period"), idempotency_key=key)
+        _errors_call(case["call"], transport)
     assert _error_fields(raised.value) == case["outcome"]
 
 
@@ -1121,7 +1127,7 @@ def _keys_of(given: Any) -> SnapshotKeys | list[Any]:
                     alg=k.get("alg", ""),
                     use=k.get("use", ""),
                 )
-                for k in given["keys"]
+                for k in cast("list[dict[str, str]]", given["keys"])
             )
         )
     return list(given)

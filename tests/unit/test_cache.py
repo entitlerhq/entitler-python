@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import anyio
+import anyio.lowlevel
 import httpx
 import pytest
 
@@ -71,7 +72,9 @@ def test_a_fresh_answer_is_served_without_a_request(transport: Transport, clock:
     assert transport.requests[-1].headers["If-None-Match"] == '"v1"'
 
 
-def test_revalidate_skips_a_fresh_answer_and_sends_its_etag(transport: Transport, clock: Clock) -> None:
+def test_revalidate_skips_a_fresh_answer_and_sends_its_etag(
+    transport: Transport, clock: Clock
+) -> None:
     client = server(transport)
     transport.answers = [ok(CHECK, **FRESH), {"status": 304}]
     client.customer("u").check("export_pdf")
@@ -102,7 +105,9 @@ def test_an_aged_answer_is_fresh_for_less_time(transport: Transport, clock: Cloc
     assert len(transport.requests) == 2
 
 
-def test_a_304_renews_the_entry_and_keeps_headers_it_leaves_out(transport: Transport, clock: Clock) -> None:
+def test_a_304_renews_the_entry_and_keeps_headers_it_leaves_out(
+    transport: Transport, clock: Clock
+) -> None:
     store = Store()
     client = server(transport, cache=store)
     transport.answers = [ok(CHECK, **FRESH), {"status": 304, "headers": {"ETag": '"v2"'}}]
@@ -135,7 +140,9 @@ def test_no_store_and_unmarked_answers_are_never_kept(transport: Transport) -> N
     assert store.entries == {}
 
 
-def test_a_write_makes_the_customers_kept_answers_revalidate(transport: Transport, clock: Clock) -> None:
+def test_a_write_makes_the_customers_kept_answers_revalidate(
+    transport: Transport, clock: Clock
+) -> None:
     client = server(transport)
     transport.fallback = lambda _r: httpx.Response(200, json=answers.usage_result())
     transport.answers = [ok(CHECK, **FRESH)]
@@ -152,7 +159,9 @@ def test_a_write_makes_the_customers_kept_answers_revalidate(transport: Transpor
     assert len(transport.requests) == count
 
 
-def test_a_read_that_started_before_a_write_is_not_kept_as_fresh(transport: Transport, clock: Clock) -> None:
+def test_a_read_that_started_before_a_write_is_not_kept_as_fresh(
+    transport: Transport, clock: Clock
+) -> None:
     client = server(transport)
     customer = client.customer("u")
 
@@ -255,7 +264,9 @@ def test_a_store_holding_something_else_is_a_miss(transport: Transport) -> None:
     assert len(transport.requests) == 2
 
 
-def test_an_unreachable_read_answers_the_kept_entry_as_stale(transport: Transport, clock: Clock) -> None:
+def test_an_unreachable_read_answers_the_kept_entry_as_stale(
+    transport: Transport, clock: Clock
+) -> None:
     seen: list[Exception] = []
     client = server(transport, on_error=seen.append)
     transport.answers = [ok(CHECK, **METER), {"failure": "connection"}]
@@ -276,7 +287,9 @@ def test_an_unreachable_read_answers_the_kept_entry_as_stale(transport: Transpor
         {"status": 200, "body": "<html>captive portal</html>"},
     ],
 )
-def test_each_unreachable_failure_stands_in(answer: dict[str, Any], transport: Transport, clock: Clock) -> None:
+def test_each_unreachable_failure_stands_in(
+    answer: dict[str, Any], transport: Transport, clock: Clock
+) -> None:
     client = server(transport)
     transport.answers = [ok(CHECK, **METER), answer]
     client.customer("u").check("export_pdf")
@@ -304,7 +317,10 @@ def test_an_entry_older_than_stale_for_never_stands_in(transport: Transport, clo
 def test_is_entitled_answers_its_default_and_reports(transport: Transport) -> None:
     seen: list[Exception] = []
     client = server(transport, on_error=seen.append)
-    transport.answers = [{"status": 500}, {"status": 404, "body": answers.error("feature_not_found")}]
+    transport.answers = [
+        {"status": 500},
+        {"status": 404, "body": answers.error("feature_not_found")},
+    ]
     assert client.customer("u").is_entitled("sso", default=True) is True
     assert client.customer("u").is_entitled("sso", default=False) is False
     assert [getattr(e, "status", None) for e in seen] == [500, 404]
@@ -325,9 +341,15 @@ def test_on_error_raising_changes_nothing(transport: Transport, clock: Clock) ->
     assert good.customer("u").check("export_pdf").stale
 
 
-def test_the_outage_window_answers_kept_entries_without_a_request(transport: Transport, clock: Clock) -> None:
+def test_the_outage_window_answers_kept_entries_without_a_request(
+    transport: Transport, clock: Clock
+) -> None:
     client = server(transport)
-    transport.answers = [ok(CHECK, **METER), ok(answers.check(customer="v"), **METER), {"status": 503}]
+    transport.answers = [
+        ok(CHECK, **METER),
+        ok(answers.check(customer="v"), **METER),
+        {"status": 503},
+    ]
     client.customer("u").check("export_pdf")
     client.customer("v").check("export_pdf")
     assert client.customer("u").check("export_pdf").stale
@@ -400,7 +422,7 @@ async def test_twenty_concurrent_reads_send_one_test_request(clock: Clock) -> No
         await started.wait()
         for _ in range(19):
             group.start_soon(read)
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         release.set()
     assert calls == 3
     assert sorted(results) == [False] + [True] * 19
@@ -463,7 +485,9 @@ def test_a_refreshed_token_starts_new_entries(transport: Transport, clock: Clock
         "a.eyJleHAiOjE3ODI5MDE4MDAsImlhdCI6MTc4Mjg5ODIwMH0.two",
         "a.eyJleHAiOjE3ODI5MDE4MDAsImlhdCI6MTc4Mjg5ODIwMH0.one",
     ]
-    client = EntitlerClient(token=lambda: tokens.pop(), http_client=transport.client(), max_retries=0)
+    client = EntitlerClient(
+        token=lambda: tokens.pop(), http_client=transport.client(), max_retries=0
+    )
     transport.answers = [ok(CHECK, **FRESH), {"status": 401}, ok(CHECK, **FRESH)]
     client.me.check("export_pdf")
     client.me.check("export_pdf", revalidate=True)
