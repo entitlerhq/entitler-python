@@ -1,0 +1,222 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      ENTITLER_TEST_KEY:
+        required: false
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  UV_LOCKED: "1"
+
+jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+
+  build:
+    name: Build and type check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uv run mypy
+      - run: uv run pyright
+
+  test:
+    name: Test (Python ${{ matrix.python }}, ${{ matrix.os }}${{ matrix.resolution == 'lowest-direct' && ', lowest dependencies' || '' }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+        resolution: [locked]
+        include:
+          - os: macos-15
+            python: "3.15"
+            resolution: locked
+          - os: windows-2025
+            python: "3.15"
+            resolution: locked
+          - os: ubuntu-24.04
+            python: "3.11"
+            resolution: lowest-direct
+    env:
+      UV_PYTHON: ${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Run the unit tests with coverage
+        env:
+          RESOLUTION: ${{ matrix.resolution }}
+        run: |
+          run="uv run"
+          if [ "$RESOLUTION" = lowest-direct ]; then
+            unset UV_LOCKED
+            uv venv
+            uv pip install --resolution lowest-direct -e ".[snapshots]" --group dev
+            run="uv run --no-sync"
+          fi
+          $run coverage run -m pytest
+          $run coverage report
+
+  docs:
+    name: API reference and guides
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Build the API reference, with warnings failing
+        run: uv run python -W error -m pdoc --docformat google -o site entitler entitler.testing entitler.cli
+      - name: Type-check every snippet in the README and guides
+        run: uv run python scripts/snippets.py
+
+  examples:
+    name: Examples
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uv run python scripts/examples.py check
+      - run: uv run pytest examples/testing
+
+  package:
+    name: Package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uv build
+      - run: uv run twine check --strict dist/*
+      - name: Check the wheel's contents and size
+        run: |
+          wheel=$(ls dist/*.whl)
+          size=$(wc -c < "$wheel")
+          echo "The wheel is $size bytes."
+          if [ "$size" -gt 300000 ]; then
+            echo "The wheel is larger than 300 KB."
+            exit 1
+          fi
+          unzip -l "$wheel" | grep -q "entitler/py.typed"
+          if unzip -l "$wheel" | grep -qE "tests/|examples/|docs/"; then
+            echo "The wheel holds files that belong only in the repository."
+            exit 1
+          fi
+      - name: Install the wheel alone and run it
+        run: |
+          uv venv "$RUNNER_TEMP/smoke"
+          uv pip install --python "$RUNNER_TEMP/smoke" dist/*.whl
+          "$RUNNER_TEMP/smoke/bin/python" -c "import entitler, entitler.testing; print(entitler.__version__)"
+          "$RUNNER_TEMP/smoke/bin/python" -m entitler --help
+          "$RUNNER_TEMP/smoke/bin/entitler" --help
+
+  integration:
+    name: Live API tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Run the live API tests and the quick start
+        env:
+          ENTITLER_TEST_KEY: ${{ secrets.ENTITLER_TEST_KEY }}
+          ENTITLER_TEST_PUBLISHABLE_KEY: ${{ vars.ENTITLER_TEST_PUBLISHABLE_KEY }}
+          EVENT: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ -z "$ENTITLER_TEST_KEY" ]; then
+            if [ "$EVENT" = pull_request ] && { [ "$HEAD_REPO" != "$REPO" ] || [ "$ACTOR" = "dependabot[bot]" ]; }; then
+              echo "Live API tests skipped: this pull request has no access to ENTITLER_TEST_KEY."
+              exit 0
+            fi
+            echo "ENTITLER_TEST_KEY is missing, and this run needs it."
+            exit 1
+          fi
+          if [ -z "$ENTITLER_TEST_PUBLISHABLE_KEY" ]; then
+            echo "ENTITLER_TEST_PUBLISHABLE_KEY is missing, and this run needs it."
+            exit 1
+          fi
+          uv run pytest tests/integration
+          ENTITLER_KEY="$ENTITLER_TEST_KEY" uv run python examples/quickstart/main.py
+      - name: Report a failed nightly run
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Nightly live API tests failed"
+          number=$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)
+          body="The nightly live API tests failed: $RUN_URL"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$REPO" --body "$body"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "$body"
+          fi
+
+  all-checks-passed:
+    name: All checks passed
+    if: always()
+    needs: [lint, build, test, docs, examples, package, integration]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail unless every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            if [ "$result" != success ]; then
+              echo "A required job finished with $result."
+              exit 1
+            fi
+          done

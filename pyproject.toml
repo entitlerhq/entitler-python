@@ -42,7 +42,7 @@ Changelog = "https://github.com/entitlerhq/entitler-python/blob/main/CHANGELOG.m
 
 [dependency-groups]
 dev = [
-  "cryptography>=46",
+  "cryptography>=42",
   "coverage[toml]>=7.10",
   "fastapi>=0.118",
   "mypy>=1.18",

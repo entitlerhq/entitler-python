@@ -618,7 +618,7 @@ provides-extras = ["snapshots"]
 [package.metadata.requires-dev]
 dev = [
     { name = "coverage", extras = ["toml"], specifier = ">=7.10" },
-    { name = "cryptography", specifier = ">=46" },
+    { name = "cryptography", specifier = ">=42" },
     { name = "fastapi", specifier = ">=0.118" },
     { name = "mypy", specifier = ">=1.18" },
     { name = "pdoc", specifier = ">=15" },
