@@ -69,8 +69,8 @@ class Customers:
 
         Args:
             q: Searches names, emails and external ids.
-            cohort: Only customers in this cohort.
-            track: Only customers on this track.
+            cohort: Only customers holding this cohort, named `<plan key or id>:<n>`.
+            track: Only customers on the track with this id.
             include_test: Include test customers.
             cursor: Start at the page a previous page's `next` names, so a stateless admin page
                 can link to page 3.

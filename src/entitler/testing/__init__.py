@@ -6,6 +6,7 @@ package never imports this module itself.
 
 Example:
     ```python
+    from entitler import Feature
     from entitler.testing import fake_customer, metered
 
     def test_export_needs_the_feature() -> None:

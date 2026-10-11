@@ -44,10 +44,15 @@ class CacheStore(Protocol):
         class RedisCache:
             def get(self, key: str) -> CacheEntry | None:
                 kept = redis.get(f"entitler:{key}")
-                return pickle.loads(kept) if kept else None
+                if kept is None:
+                    return None
+                fields = json.loads(kept)
+                fields["received_at"] = datetime.fromisoformat(fields["received_at"])
+                return CacheEntry(**fields)
 
             def set(self, key: str, entry: CacheEntry, ttl: float) -> None:
-                redis.set(f"entitler:{key}", pickle.dumps(entry), ex=int(ttl) + 1)
+                fields = {**dataclasses.asdict(entry), "received_at": entry.received_at.isoformat()}
+                redis.set(f"entitler:{key}", json.dumps(fields), ex=int(ttl) + 1)
         ```
     """
 
