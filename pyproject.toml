@@ -77,6 +77,8 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 # `timeout` is each attempt's deadline, a different thing from a deadline around the whole call.
 "src/entitler/_async*.py" = ["ASYNC109"]
+# Answer builders take and write arbitrary JSON, and fake tokens are not credentials.
+"src/entitler/testing/*.py" = ["ANN401", "S107"]
 "tests/**" = ["D", "S101", "S105", "S106", "ANN401", "PT011"]
 "examples/**" = ["D", "S101", "T201"]
 "scripts/**" = ["D", "T201", "S"]
