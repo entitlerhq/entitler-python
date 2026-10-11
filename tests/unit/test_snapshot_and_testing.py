@@ -20,6 +20,7 @@ from entitler import (
     SnapshotError,
     SnapshotKey,
     SnapshotKeys,
+    UsageRefusedError,
     UsageReplayedError,
     verify_snapshot,
 )
@@ -223,7 +224,7 @@ def test_a_wrong_key_and_a_tampered_token_fail() -> None:
     with pytest.raises(SnapshotError, match="changed after Entitler signed it"):
         verify(tampered, signer)
     with pytest.raises(SnapshotError, match="Pass the token snapshot"):
-        verify(None, signer)  # type: ignore[arg-type]
+        verify(None, signer)  # type: ignore[arg-type]  # a value the call must refuse or accept as a string
 
 
 def test_a_missing_cryptography_package_says_how_to_install_it(
@@ -271,7 +272,7 @@ def test_the_fake_customer_reads_and_meters() -> None:
     with pytest.raises(APIError) as mismatch:
         customer.record_usage(CREDITS, 2, idempotency_key="a")
     assert mismatch.value.code == "idempotency_mismatch"
-    observed = customer.record_usage(CREDITS, 10, idempotency_key="b", mode="observe")  # type: ignore[arg-type]
+    observed = customer.record_usage(CREDITS, 10, idempotency_key="b", mode="observe")  # type: ignore[arg-type]  # a value the call must refuse or accept as a string
     assert observed.over_by == 10
     cancelled = customer.cancel_usage(recorded.id or "")
     assert (cancelled.outcome, cancelled.meter_change) == ("cancelled", -3)
@@ -414,3 +415,29 @@ async def test_the_async_fake_answers_too() -> None:
         hold.use(2)
     assert (await customer.check(CREDITS)).used == 2
     assert [w.method for w in customer.writes] == ["hold_usage", "settle_usage"]
+
+
+def test_a_settlement_in_the_fake_is_a_report_that_can_be_cancelled() -> None:
+    customer = fake_customer({"ai_credits": metered(value=100)})
+    hold = customer.start_hold(CREDITS, 10, idempotency_key="h1")
+    settled = customer.settle_usage(hold.id, 6)
+    assert settled.id is not None
+    assert customer.usage().log.items[0].id == settled.id
+    cancelled = customer.cancel_usage(settled.id)
+    assert (cancelled.outcome, cancelled.meter_change) == ("cancelled", -6)
+    assert customer.check(CREDITS).used == 0
+
+
+@pytest.mark.parametrize("hold", [False, True], ids=["report", "hold"])
+def test_the_fake_names_the_refusal_as_the_api_does(hold: bool) -> None:
+    def refusal(values: dict[str, Any]) -> object:
+        customer = fake_customer(values)
+        if hold:
+            with pytest.raises(UsageRefusedError) as raised:
+                customer.start_hold(CREDITS, 5, idempotency_key="k")
+            return raised.value.result.refusal
+        return customer.record_usage(CREDITS, 5, idempotency_key="k").refusal
+
+    assert refusal({"ai_credits": metered(value=0)}) == "not_entitled"
+    assert refusal({"ai_credits": metered(value=10, used=10)}) == "over_allowance"
+    assert refusal({"ai_credits": metered(value=10, used=8)}) == "over_allowance"

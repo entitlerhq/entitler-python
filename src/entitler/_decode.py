@@ -1105,11 +1105,6 @@ def credential_self(o: Obj) -> tuple[tuple[str, ...], bool | None]:
     return o.strings("scopes"), o.optional("registration", o.boolean)
 
 
-def event_error(o: Obj) -> UsageEventError:
-    """Decodes a usage batch event's error."""
-    return UsageEventError(code=o.string("code"), message=o.string("message"))
-
-
 def usage_events_result(o: Obj) -> UsageEventsResult:
     """Decodes `UsageEventsResult`."""
     return UsageEventsResult(

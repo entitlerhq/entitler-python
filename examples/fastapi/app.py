@@ -11,7 +11,14 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request, params
 
-from entitler import AsyncEntitlerServer, AsyncServerCustomer, CustomerTokenScope, Feature
+from entitler import (
+    AsyncEntitlerServer,
+    AsyncServerCustomer,
+    CustomerTokenScope,
+    Feature,
+    UsageRefusedError,
+    UsageReplayedError,
+)
 
 EXPORT_PDF = Feature.boolean("export_pdf")
 AI_CREDITS = Feature.metered("ai_credits")
@@ -62,9 +69,15 @@ async def export_pdf(document_id: str) -> dict[str, str]:
 
 @app.post("/chat/{message_id}")
 async def chat(message_id: str, customer: Customer) -> dict[str, int]:
-    async with customer.with_hold(AI_CREDITS, 500, idempotency_key=message_id) as hold:
-        tokens = 120
-        hold.use(tokens)
+    """Runs metered work: `402` without credits, `409` when this message was already answered."""
+    try:
+        async with customer.with_hold(AI_CREDITS, 5, idempotency_key=message_id) as hold:
+            tokens = 3
+            hold.use(tokens)
+    except UsageRefusedError:
+        raise HTTPException(status_code=402, detail="No credits left.") from None
+    except UsageReplayedError:
+        raise HTTPException(status_code=409, detail="This message was already answered.") from None
     return {"tokens": tokens}
 
 

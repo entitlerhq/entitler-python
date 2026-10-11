@@ -59,7 +59,7 @@ dev = [
 path = "src/entitler/_version.py"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/entitler", "README.md", "LICENSE", "CHANGELOG.md"]
+include = ["/src/entitler", "/README.md", "/LICENSE", "/CHANGELOG.md"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/entitler"]

@@ -104,19 +104,6 @@ def key_or_new(value: object) -> str:
     return str(uuid.uuid4()) if value is None else idempotency_key(value)
 
 
-class _ClientTimeout(float):
-    """The default of every call's `timeout`: the client's own timeout."""
-
-    __slots__ = ()
-
-    def __repr__(self) -> str:
-        return "<the client's timeout>"
-
-
-CLIENT_TIMEOUT: float = _ClientTimeout("nan")
-"""A call's default `timeout`, standing for the client's: never a timeout of its own."""
-
-
 def timeout(value: object) -> float:
     """Checks a timeout: a finite number of seconds above 0."""
     if value is None:

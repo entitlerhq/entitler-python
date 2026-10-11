@@ -7,17 +7,55 @@ import os
 import uuid
 from collections.abc import Iterator
 
-from entitler import EntitlerServer, Feature, UsageMode, UsageRefusedError
+from entitler import (
+    EntitlerServer,
+    Feature,
+    ServerCustomer,
+    UsageMode,
+    UsageRefusedError,
+    UsageReplayedError,
+)
 
 AI_CREDITS = Feature.metered("ai_credits")
 
 
 def stream_reply(prompt: str) -> Iterator[int]:
-    """Stands in for a model's streamed reply: the running total of tokens after each chunk."""
-    total = 0
-    for word in prompt.split():
-        total += len(word)
+    """Stands in for a model's streamed reply: the running total of tokens, one per word."""
+    for total, _word in enumerate(prompt.split(), start=1):
         yield total
+
+
+def streamed_reply(customer: ServerCustomer, message_id: str, prompt: str) -> None:
+    """A hold around streamed work that reports as it goes."""
+    try:
+        hold = customer.start_hold(AI_CREDITS, 8, idempotency_key=message_id)
+    except UsageRefusedError as refused:
+        print(f"No allowance left: {refused.result.refusal}. Show an upgrade.")
+        return
+    except UsageReplayedError:
+        print("This message was already answered: show that answer, and charge nothing.")
+        return
+    with hold:
+        hold.use(0)
+        for total in stream_reply(prompt):
+            hold.use(total)
+        settled = hold.finish()
+    print(f"Streamed work settled: {settled.amount} credits.")
+
+
+def summary_job(customer: ServerCustomer, job_id: str) -> None:
+    """A hold around work whose cost is known only afterwards."""
+    try:
+        with customer.with_hold(AI_CREDITS, 5, idempotency_key=job_id) as work:
+            tokens = len(["Summarise", "this", "document"])
+            work.use(tokens)
+    except UsageRefusedError:
+        print("No allowance left for the summary.")
+        return
+    except UsageReplayedError:
+        print("This job already ran.")
+        return
+    print(f"Job charged {tokens} credits.")
 
 
 def main() -> None:
@@ -26,24 +64,9 @@ def main() -> None:
         customer.register(name="Metered work")
         try:
             message_id = f"message-{uuid.uuid4()}"
-            try:
-                hold = customer.start_hold(AI_CREDITS, 50, idempotency_key=message_id)
-            except UsageRefusedError as refused:
-                print(f"No allowance left: {refused.result.refusal}")
-                return
-            with hold:
-                hold.use(0)
-                for total in stream_reply("Write a short poem about entitlements"):
-                    hold.use(total)
-                settled = hold.finish()
-            print(f"Streamed work settled: {settled.amount} credits.")
-
-            job_id = f"job-{uuid.uuid4()}"
-            with customer.with_hold(AI_CREDITS, 20, idempotency_key=job_id) as work:
-                tokens = sum(len(word) for word in ["Summarise", "this", "document"])
-                work.use(tokens)
-            print(f"Job charged {tokens} credits.")
-
+            streamed_reply(customer, message_id, "Write a short poem about entitlements")
+            streamed_reply(customer, message_id, "Write a short poem about entitlements")
+            summary_job(customer, f"job-{uuid.uuid4()}")
             observed = customer.record_usage(
                 AI_CREDITS, 7, idempotency_key=f"bandwidth-{uuid.uuid4()}", mode=UsageMode.OBSERVE
             )

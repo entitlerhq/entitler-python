@@ -167,7 +167,7 @@ def test_a_read_that_started_before_a_write_is_not_kept_as_fresh(
     customer = client.customer("u")
 
     def answer_after_a_write(_request: httpx.Request) -> httpx.Response:
-        customer._ops.engine._bump(customer._ops.path)  # a write lands while the read is in flight
+        customer._ops.engine._bump(customer._ops.path)
         clock.now += 1
         return httpx.Response(200, json=CHECK, headers=FRESH)
 
@@ -198,6 +198,26 @@ def test_a_forgotten_customer_still_revalidates_an_entry_from_before_its_write(
     assert "/customers/first" not in engine._generations
     transport.answers = [{"status": 304}]
     client.customer("first").check("export_pdf")
+    assert len(transport.requests) == 2
+
+
+def test_a_customer_forgotten_while_its_read_is_in_flight_is_revalidated(
+    transport: Transport, clock: Clock
+) -> None:
+    client = server(transport)
+    engine = client._driver.engine
+
+    def answer_after_a_write_and_many_more(_request: httpx.Request) -> httpx.Response:
+        engine._bump("/customers/u")
+        clock.now += 1
+        for index in range(1000):
+            engine._bump(f"/customers/c{index}")
+        return httpx.Response(200, json=CHECK, headers=FRESH)
+
+    transport.answers = [answer_after_a_write_and_many_more, {"status": 304}]
+    client.customer("u").check("export_pdf")
+    assert "/customers/u" not in engine._generations
+    client.customer("u").check("export_pdf")
     assert len(transport.requests) == 2
 
 
@@ -260,7 +280,7 @@ def test_a_store_holding_something_else_is_a_miss(transport: Transport) -> None:
     transport.fallback = lambda _r: httpx.Response(200, json=CHECK, headers=FRESH)
     client.customer("u").check("export_pdf")
     for key in store.entries:
-        store.entries[key] = "junk"  # type: ignore[assignment]
+        store.entries[key] = "junk"  # type: ignore[assignment]  # a broken store answering junk
     client.customer("u").check("export_pdf")
     assert len(transport.requests) == 2
 
@@ -535,3 +555,18 @@ def test_the_server_close_drops_its_own_memory_cache(transport: Transport) -> No
     own.close()
     assert isinstance(store, MemoryCache)
     assert len(store) == 0
+
+
+def test_header_numbers_saturate_however_long(transport: Transport) -> None:
+    client = server(transport)
+    huge = "9" * 5000
+    forever = {"Cache-Control": f"max-age={huge}"}
+    transport.answers = [ok(CHECK, ETag='"v1"', Age="0", **forever)]
+    assert client.customer("u").check("export_pdf").entitled
+    assert client.customer("u").check("export_pdf").entitled
+    assert len(transport.requests) == 1
+    transport.answers = [ok(CHECK, ETag='"v2"', Age=huge, **{"Cache-Control": "max-age=60"})]
+    client.customer("w").check("export_pdf")
+    transport.answers = [{"status": 304}]
+    assert client.customer("w").check("export_pdf").entitled
+    assert transport.requests[-1].headers["If-None-Match"] == '"v2"'

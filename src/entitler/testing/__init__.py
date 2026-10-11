@@ -131,6 +131,7 @@ class _Hold:
     expires: float
     state: str = "open"
     settled: int | None = None
+    usage: str | None = None
 
 
 @dataclass
@@ -392,6 +393,7 @@ class _Api:
         return self._result(
             hold.feature,
             outcome=outcome,
+            id=hold.usage,
             hold_id=hold.id,
             amount=hold.amount if hold.settled is None else hold.settled,
             meter_change=meter_change,
@@ -423,7 +425,10 @@ class _Api:
         meter = self._meter(hold.feature)
         self.values[hold.feature] = Meter(meter.value, meter.used + amount)
         if amount > 0:
-            self.log.append(answers.usage_event(id=hold.id, feature=hold.feature, amount=amount))
+            report = _Report(self._next_id("use"), hold.feature, amount)
+            self.reports[report.id] = report
+            hold.usage = report.id
+            self.log.append(answers.usage_event(id=report.id, feature=hold.feature, amount=amount))
         return self._hold_result(hold, "settled", meter_change=amount)
 
     def _release(self, hold_id: str) -> Json:

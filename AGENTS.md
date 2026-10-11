@@ -20,8 +20,13 @@ keep its name, and keep every other job in its `needs`.
 
 ## Authorship and pull requests
 
-- Commits are authored and committed by the repository owner's identity, set with
-  `git config user.name` and `git config user.email` before the first commit.
+- Commits are authored and committed by the repository owner's identity. Before the first
+  commit, run:
+
+  ```sh
+  git config user.name "Romain Francez"
+  git config user.email "1330814+romainfrancez@users.noreply.github.com"
+  ```
 - Commit messages carry no assistant attribution: no `Co-Authored-By` or session trailers, no
   "Generated with" line, no session link and no model name. No file, commit or branch names the
   tool that wrote it, and this file is the only instruction file for agents.

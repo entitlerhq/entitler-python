@@ -262,7 +262,7 @@ def test_generate_reports_connection_failures(
         raise httpx.ConnectError("refused", request=request)
 
     api = Api()
-    api.handle = refuse  # type: ignore[method-assign]
+    api.handle = refuse  # type: ignore[method-assign]  # swaps in a handler that refuses
     code, _, stderr = run(
         ["generate", "--out", str(tmp_path / "f.py")], api, monkeypatch, {"ENTITLER_KEY": "k"}
     )

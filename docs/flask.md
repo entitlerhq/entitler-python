@@ -11,7 +11,14 @@ from typing import Any
 
 from flask import Flask, abort, current_app, jsonify, session
 
-from entitler import CustomerTokenScope, EntitlerServer, Feature, ServerCustomer
+from entitler import (
+    CustomerTokenScope,
+    EntitlerServer,
+    Feature,
+    ServerCustomer,
+    UsageRefusedError,
+    UsageReplayedError,
+)
 
 
 def create_app() -> Flask:
@@ -37,7 +44,7 @@ def requires(feature: Feature[object]) -> Callable[[Callable[..., Any]], Callabl
         @wraps(view)
         def wrapped(*args: Any, **kwargs: Any) -> Any:
             if not signed_in_customer().is_entitled(feature, default=False):
-                abort(402)
+                return jsonify(error="Upgrade to use this feature."), 402
             return view(*args, **kwargs)
 
         return wrapped
@@ -63,9 +70,16 @@ def export_pdf(document_id: str) -> Any:
 @app.post("/summaries/<job_id>")
 def summarise(job_id: str) -> Any:
     customer = signed_in_customer()
-    with customer.with_hold(features.AI_CREDITS, 500, idempotency_key=f"summary-{job_id}") as hold:
-        words = 120
-        hold.use(words)
+    try:
+        with customer.with_hold(
+            features.AI_CREDITS, 500, idempotency_key=f"summary-{job_id}"
+        ) as hold:
+            words = 120
+            hold.use(words)
+    except UsageRefusedError:
+        return jsonify(error="No credits left."), 402
+    except UsageReplayedError:
+        return jsonify(error="This summary was already made."), 409
     return jsonify(words=words)
 
 

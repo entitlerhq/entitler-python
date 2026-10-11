@@ -46,6 +46,7 @@ RETRIED = frozenset({408, 429, 500, 502, 503, 504})
 TRACKED_CUSTOMERS = 1000
 OUTAGE_WINDOW = 30.0
 LONGEST = sys.float_info.max
+LONGEST_HEADER = 2**53 - 1
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 _IMF = re.compile(
     r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), ([0-9]{2}) ([A-Z][a-z]{2}) ([0-9]{4}) "
@@ -70,10 +71,10 @@ def closed_error() -> RuntimeError:
 class Authorised:
     """A credential's request headers, and the credential that keys its kept answers."""
 
-    headers: Mapping[str, str]
+    headers: Mapping[str, str] = field(repr=False)
     kind: str
-    credential: str
-    token: str | None = None
+    credential: str = field(repr=False)
+    token: str | None = field(default=None, repr=False)
 
 
 OPEN = Authorised({}, "key", "")
@@ -94,7 +95,7 @@ class Attempt:
 
     method: str
     url: str
-    headers: Mapping[str, str]
+    headers: Mapping[str, str] = field(repr=False)
     body: str | None
     timeout: float
     idempotency_key: str | None
@@ -213,15 +214,23 @@ def _directive(control: str | None, name: str) -> bool:
     )
 
 
+def _seconds(digits: str) -> int:
+    """A header's run of digits as whole seconds, saturating at `LONGEST_HEADER` however long."""
+    significant = digits.lstrip("0") or "0"
+    if len(significant) > len(str(LONGEST_HEADER)):
+        return LONGEST_HEADER
+    return min(int(significant), LONGEST_HEADER)
+
+
 def max_age(control: str | None) -> int | None:
     """The `max-age` directive of a `Cache-Control` value, in seconds."""
     found = re.search(r"(?:^|[\s,])max-age=([0-9]+)", control or "", re.I)
-    return None if found is None else int(found.group(1))
+    return None if found is None else _seconds(found.group(1))
 
 
 def _age(headers: Mapping[str, str]) -> int | None:
     value = headers.get("age", "").strip()
-    return int(value) if re.fullmatch(r"[0-9]+", value) else None
+    return _seconds(value) if re.fullmatch(r"[0-9]+", value) else None
 
 
 def api_error(received: Received, idempotency_key: str | None, now: float) -> APIError:
@@ -279,10 +288,9 @@ def invalid_response(
 
 @dataclass(slots=True)
 class Answer(Generic[T]):
-    """A decoded answer, whether it came from a kept copy, and whether it was replayed."""
+    """A decoded answer, and whether it was replayed."""
 
     data: T
-    stale: bool
     replayed: bool
 
 
@@ -349,7 +357,7 @@ class Engine:
             else:
                 data = self._decode(call, received.text, received, replayed)
             self._down_until = 0.0
-            return Answer(data, False, replayed)
+            return Answer(data, replayed)
         return (yield from self._cached(call, url, headers, auth))
 
     def _cached(
@@ -362,7 +370,7 @@ class Engine:
         now = _clock.now()
         usable = kept is not None and now - kept.received_at.timestamp() < self.stale_for
         if kept is not None and not call.revalidate and self._fresh(kept, call.customer, now):
-            return Answer(self._decode(call, kept.body, None, False), False, False)
+            return Answer(self._decode(call, kept.body, None, False), False)
         with self._lock:
             down = self._down_until > 0
             in_window = usable and (now < self._down_until or (down and self._probing))
@@ -370,7 +378,7 @@ class Engine:
             if probe:
                 self._probing = True
         if kept is not None and in_window:
-            return Answer(self._decode(call, kept.body, None, True), True, False)
+            return Answer(self._decode(call, kept.body, None, True), False)
         if kept is not None and kept.etag is not None:
             headers["If-None-Match"] = kept.etag
         used = [auth]
@@ -388,12 +396,13 @@ class Engine:
                 self._down_until = _clock.now() + window
             if kept is not None and usable and stands_in(error) and used[0] == auth:
                 self.report(error)
-                return Answer(self._decode(call, kept.body, None, True), True, False)
+                return Answer(self._decode(call, kept.body, None, True), False)
             raise
         finally:
             if probe:
                 self._probing = False
-        received_at = _clock.now() if self._generation(call.customer) == generation else started
+        unchanged = self._generation(call.customer) == generation
+        received_at = _clock.now() if unchanged and self._forgotten_until < started else started
         entry = _entry(received, kept, received_at)
         if not _directive(entry.cache_control, "no-store") and (
             entry.etag is not None or max_age(entry.cache_control) is not None
@@ -403,7 +412,7 @@ class Engine:
                 yield CacheSet(key, entry, ttl)
             except Exception as error:
                 self.report(error)
-        return Answer(data, False, False)
+        return Answer(data, False)
 
     def _get(self, key: str) -> Gen[CacheEntry | None]:
         try:
@@ -503,7 +512,8 @@ class Engine:
                 raise failure
             if retry >= self.max_retries:
                 raise failure
-            yield Sleep(wait if wait is not None else _clock.jitter() * min(8.0, 0.5 * 2**retry))
+            backoff = min(8.0, 0.5 * 2 ** min(retry, 5))
+            yield Sleep(wait if wait is not None else _clock.jitter() * backoff)
             retry += 1
 
 

@@ -190,6 +190,46 @@ def test_disposal_reports_failures_instead_of_raising(transport: Transport) -> N
     assert isinstance(seen[1], APIError)
 
 
+class WorkFailedError(Exception):
+    """The body's own failure, which disposal must never replace."""
+
+
+def test_disposal_never_replaces_the_bodys_error(transport: Transport) -> None:
+    seen: list[Exception] = []
+    client = server(transport, on_error=seen.append)
+    transport.answers = [held()]
+    hold = client.customer("u").start_hold(CREDITS, 10, idempotency_key="a")
+
+    def work() -> None:
+        with hold:
+            client.close()
+            raise WorkFailedError
+
+    with pytest.raises(WorkFailedError):
+        work()
+    assert isinstance(seen[0], RuntimeError)
+
+
+@pytest.mark.anyio
+async def test_async_disposal_never_replaces_the_bodys_error() -> None:
+    transport = Transport()
+    transport.answers = [held()]
+    seen: list[Exception] = []
+    client = AsyncEntitlerServer(
+        KEY, http_client=transport.async_client(), max_retries=0, on_error=seen.append
+    )
+    hold = await client.customer("u").start_hold(CREDITS, 10, idempotency_key="a")
+
+    async def work() -> None:
+        async with hold:
+            await client.aclose()
+            raise WorkFailedError
+
+    with pytest.raises(WorkFailedError):
+        await work()
+    assert isinstance(seen[0], RuntimeError)
+
+
 def test_only_the_first_action_acts(transport: Transport) -> None:
     transport.answers = [held(), held(outcome="released")]
     hold = server(transport).customer("u").start_hold(CREDITS, 10, idempotency_key="k")
@@ -287,7 +327,7 @@ def test_hold_keys_are_at_most_193_characters(transport: Transport) -> None:
     with pytest.raises(ValueError, match="1 to 193"):
         customer.start_hold(CREDITS, 1, idempotency_key="k" * 194)
     with pytest.raises(TypeError, match="Pass idempotency_key: a key from your own unit of work"):
-        customer.record_usage(CREDITS, 1, idempotency_key=None)  # type: ignore[arg-type]
+        customer.record_usage(CREDITS, 1, idempotency_key=None)  # type: ignore[arg-type]  # a missing key, which the SDK must refuse
     assert transport.requests == []
 
 

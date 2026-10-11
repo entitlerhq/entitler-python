@@ -114,10 +114,6 @@ class Settings:
         """The in-app client's visitor: the one given, else a new one."""
         return visitor_of(given) or new_visitor_id()
 
-    def blank_token(self, kind: str) -> str:
-        """The message a blank provider answer would have raised at construction."""
-        return BLANK_CUSTOMER_CREDENTIAL if kind == "token" else BLANK_IDENTITY
-
     def engine(
         self, *, cached: bool, extra_headers: Callable[[], Mapping[str, str]] | None = None
     ) -> Engine:

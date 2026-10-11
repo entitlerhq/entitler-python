@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Generic, Literal, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
-    from ._features import Feature
+    from ._features import Feature, Metered
 
 FeatureValue: TypeAlias = Literal[True] | int | Literal["unlimited"]
 """A feature's value: `True` (on), a whole amount (`0` included) or `"unlimited"`.
@@ -25,125 +25,175 @@ class FeatureType(StrEnum):
     """A feature's kind."""
 
     BOOLEAN = "boolean"
+    """On or off."""
     CONFIG = "config"
+    """An amount or `unlimited`, such as seats."""
     METERED = "metered"
+    """An allowance that usage counts against."""
     GROUP = "group"
+    """A group of other features."""
 
 
 class EnvironmentKind(StrEnum):
     """Whether an environment is for testing or live customers."""
 
     TEST = "test"
+    """A test environment: test money only."""
     LIVE = "live"
+    """The live environment."""
 
 
 class Arm(StrEnum):
     """An experiment's arm."""
 
     CONTROL = "control"
+    """The experiment's control arm."""
     VARIANT = "variant"
+    """The experiment's variant arm."""
 
 
 class Move(StrEnum):
     """How a plan or add-on moves the customer."""
 
     SUBSCRIBE = "subscribe"
+    """Start a plan where the customer holds none."""
     UPGRADE = "upgrade"
+    """Move to a higher plan."""
     DOWNGRADE = "downgrade"
+    """Move to a lower plan."""
     SWITCH = "switch"
+    """Move to a plan at the same level."""
     ADD = "add"
+    """Add an add-on."""
     REPLACE = "replace"
+    """Replace one add-on with another."""
 
 
 class MoveAction(StrEnum):
     """Who can make a move: the customer alone, the company's sales team, or nobody now."""
 
     BUY = "buy"
+    """The customer can make the move alone."""
     CONTACT = "contact"
+    """A sales-led move, which only the company can make."""
     UNAVAILABLE = "unavailable"
+    """Nobody can make the move now; `reason` says why."""
 
 
 class PlanKind(StrEnum):
     """A plan, or an add-on on top of one."""
 
     PLAN = "plan"
+    """A plan."""
     ADDON = "addon"
+    """An add-on, which goes on top of a plan."""
 
 
 class Store(StrEnum):
     """Who bills a plan: Stripe, the App Store or Google Play."""
 
     STRIPE = "stripe"
+    """Billed by Stripe."""
     APPLE = "apple"
+    """Billed by the App Store."""
     GOOGLE = "google"
+    """Billed by Google Play."""
 
 
 class Biller(StrEnum):
     """Who bills a plan after a booked `billing` change."""
 
     PROVIDER = "provider"
+    """The payment provider bills the plan."""
     OUTSIDE = "outside"
+    """No payment provider bills it, as with an invoiced contract."""
     STORE = "store"
+    """An app store bills it."""
 
 
 class When(StrEnum):
     """When a move takes effect: now, or at the end of the period."""
 
     NOW = "now"
+    """Now."""
     END = "end"
+    """At the end of the current period, at renewal."""
 
 
 class Effective(StrEnum):
     """When a plan change took or takes effect."""
 
     NOW = "now"
+    """The change took effect now."""
     RENEWAL = "renewal"
+    """The change takes effect at renewal, at `at`."""
 
 
 class ImpactKind(StrEnum):
     """What one line of a move's impact describes."""
 
     GAINS = "gains"
+    """Something the customer gains."""
     LOSES = "loses"
+    """Something the customer loses."""
     CHANGES = "changes"
+    """Something that changes."""
     SAME = "same"
+    """Something that stays the same."""
 
 
 class PriceInterval(StrEnum):
     """How often a recurring price bills."""
 
     DAY = "day"
+    """Charged daily."""
     WEEK = "week"
+    """Charged weekly."""
     MONTH = "month"
+    """Charged monthly."""
     YEAR = "year"
+    """Charged yearly."""
 
 
 class Tax(StrEnum):
     """Whether a price includes tax."""
 
     INCLUSIVE = "inclusive"
+    """The price includes tax."""
     EXCLUSIVE = "exclusive"
+    """Tax is added to the price."""
     UNSPECIFIED = "unspecified"
+    """The provider does not say."""
 
 
 class UsageOutcome(StrEnum):
     """What a usage write did."""
 
     RECORDED = "recorded"
+    """The usage was recorded."""
     DUPLICATE = "duplicate"
+    """The key replays an earlier write, or names a hold still open; nothing new was recorded."""
     REFUSED = "refused"
+    """Gate mode refused it: no allowance, or not entitled."""
     HELD = "held"
+    """The amount is on hold."""
     SETTLED = "settled"
+    """The hold was settled."""
     RELEASED = "released"
+    """The hold was released, recording nothing."""
     CANCELLED = "cancelled"
+    """The usage report was cancelled."""
     ADJUSTED = "adjusted"
+    """The meter was adjusted."""
 
 
 class Refusal(StrEnum):
     """Why a usage write was refused."""
 
     NOT_ENTITLED = "not_entitled"
+    """The customer is not entitled to the feature."""
     OVER_ALLOWANCE = "over_allowance"
+    """The amount does not fit the allowance left."""
 
 
 class UsageMode(StrEnum):
@@ -154,106 +204,147 @@ class UsageMode(StrEnum):
     """
 
     GATE = "gate"
+    """Record only if the amount fits the allowance."""
     OBSERVE = "observe"
+    """Always record, for work that already happened; the meter may pass the allowance."""
 
 
 class UsageSource(StrEnum):
     """Where a usage report came from."""
 
     API = "api"
+    """Recorded by a server key."""
     CLIENT = "client"
+    """Recorded by an in-app client."""
     DASHBOARD = "dashboard"
+    """Recorded in the dashboard."""
 
 
 class UsageEventKind(StrEnum):
     """A usage log entry: a use, or a meter adjustment."""
 
     USE = "use"
+    """Usage was recorded."""
     ADJUST = "adjust"
+    """The meter was adjusted."""
 
 
 class BatchOutcome(StrEnum):
     """What happened to one event of a usage batch."""
 
     RECORDED = "recorded"
+    """The event was recorded."""
     DUPLICATE = "duplicate"
+    """The event's key replays an earlier one; nothing new was recorded."""
     ERROR = "error"
+    """The event was not recorded; `error` says why. Resend it with the same key."""
 
 
 class CustomerKind(StrEnum):
     """How a customer holds their plan."""
 
     RECURRING = "recurring"
+    """Holds a recurring plan."""
     ONE_TIME = "one_time"
+    """Holds a one-time purchase."""
     CHANGING = "changing"
+    """Has a plan change booked."""
     DEFAULT = "default"
+    """Holds only the default plan."""
     NONE = "none"
+    """Holds no plan."""
 
 
 class Money(StrEnum):
     """Whether a purchase moved real money or test money."""
 
     REAL = "real"
+    """Money that is charged."""
     TEST = "test"
+    """Test money, never charged."""
 
 
 class TrackSource(StrEnum):
     """Who put a customer on their track."""
 
     SERVER = "server"
+    """Placed by the vendor's server."""
     DASHBOARD = "dashboard"
+    """Placed by a person in the dashboard."""
     STORE_SANDBOX = "store_sandbox"
+    """Placed by a verified sandbox build of the app."""
 
 
 class PlanStatus(StrEnum):
     """Whether a plan is sold, or kept only for the customers who hold it."""
 
     ACTIVE = "active"
+    """On sale."""
     LEGACY = "legacy"
+    """No longer sold; customers who hold it keep it."""
 
 
 class PeriodUnit(StrEnum):
     """The unit of a billing period."""
 
     DAYS = "days"
+    """Days."""
     WEEKS = "weeks"
+    """Weeks."""
     MONTHS = "months"
+    """Months."""
 
 
 class MeterUnit(StrEnum):
     """The unit of a meter's reset window."""
 
     HOURS = "hours"
+    """Hours."""
     DAYS = "days"
+    """Days."""
     WEEKS = "weeks"
+    """Weeks."""
     MONTHS = "months"
+    """Months."""
 
 
 class MeterAnchor(StrEnum):
     """What a meter's reset window counts from."""
 
     PERIOD = "period"
+    """Windows start with the customer's billing period (the default)."""
     CALENDAR = "calendar"
+    """Windows start on calendar boundaries in the project's time zone."""
 
 
 class ListingMode(StrEnum):
     """Whether a sales channel sells in live or test mode."""
 
     LIVE = "live"
+    """A live listing."""
     TEST = "test"
+    """A test listing."""
 
 
 class BillingStatus(StrEnum):
     """The payment provider's subscription status."""
 
     INCOMPLETE = "incomplete"
+    """The first payment is not complete."""
     INCOMPLETE_EXPIRED = "incomplete_expired"
+    """The first payment was never completed."""
     TRIALING = "trialing"
+    """In a trial."""
     ACTIVE = "active"
+    """Paid and current."""
     PAST_DUE = "past_due"
+    """A renewal payment failed and is being retried."""
     CANCELED = "canceled"
+    """Ended, in the provider's spelling."""
     UNPAID = "unpaid"
+    """Renewal payments failed."""
     PAUSED = "paused"
+    """Paused."""
 
 
 class NextStep(StrEnum):
@@ -265,34 +356,58 @@ class NextStep(StrEnum):
     """
 
     DONE = "done"
+    """The change is made; `change` holds it."""
     PAY = "pay"
+    """Send the customer to `url` to pay."""
     CONFIRMING = "confirming"
+    """The provider is confirming a payment; show it as pending."""
     MANAGE = "manage"
+    """A store bills the product; the customer changes it there (`billed_by`)."""
 
 
 class Scope(StrEnum):
     """A scope a credential can hold."""
 
     PLANS_READ = "plans:read"
+    """Read pricing and the feature catalogue."""
     ENTITLEMENTS_READ = "entitlements:read"
+    """Read checks, entitlements and plans, and mint snapshots."""
     USAGE_READ = "usage:read"
+    """Read usage."""
     USAGE_WRITE = "usage:write"
+    """Record usage and holds."""
     BILLING_SELF = "billing:self"
+    """Make the customer's own billing choices in an app."""
     CUSTOMERS_REGISTER = "customers:register"
+    """Register customers."""
     CUSTOMERS_READ = "customers:read"
+    """Read customers' details and billing."""
     CUSTOMERS_WRITE = "customers:write"
+    """Change customers: plans, add-ons, grants, meters and erasure."""
     CUSTOMERS_PROFILE = "customers:profile"
+    """Change customers' names, emails and metadata."""
     CUSTOMERS_SAMPLE = "customers:sample"
+    """Manage sample customers."""
     TOKENS_MINT = "tokens:mint"
+    """Mint customer tokens."""
     PLANS_WRITE = "plans:write"
+    """Edit the catalogue."""
     PLANS_RELEASE = "plans:release"
+    """Release catalogue changes."""
     TRACKS_MANAGE = "tracks:manage"
+    """Manage tracks."""
     TRACKS_PROMOTE = "tracks:promote"
+    """Promote releases between tracks."""
     TRACKS_ASSIGN = "tracks:assign"
+    """Put customers on tracks."""
     KEYS_MANAGE = "keys:manage"
+    """Manage API keys."""
     MEMBERS_MANAGE = "members:manage"
+    """Manage members."""
     PROJECTS_MANAGE = "projects:manage"
+    """Manage projects."""
     ORG_MANAGE = "org:manage"
+    """Manage the organisation."""
 
 
 class CustomerTokenScope(StrEnum):
@@ -303,9 +418,13 @@ class CustomerTokenScope(StrEnum):
     """
 
     ENTITLEMENTS_READ = "entitlements:read"
+    """Read checks, entitlements and plans, and mint snapshots. The default."""
     USAGE_READ = "usage:read"
+    """Read usage."""
     USAGE_WRITE = "usage:write"
+    """Record usage and holds, only when the app records usage itself."""
     BILLING_SELF = "billing:self"
+    """Make billing choices, only for people who may buy for the customer."""
 
 
 class PlanBilling(StrEnum):
@@ -317,8 +436,11 @@ class PlanBilling(StrEnum):
     """
 
     PROVIDER = "provider"
+    """Charge the change through the provider that bills the product (the default)."""
     KEEP = "keep"
+    """Move the customer in Entitler while the provider keeps billing what it bills."""
     END = "end"
+    """End the provider's subscription when the change takes effect, holding the plan outside it."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -1220,7 +1342,7 @@ class CustomerDetail(Generic[LogT]):
 class IssuedCustomerToken:
     """A customer token for an in-app client."""
 
-    token: str
+    token: str = field(repr=False)
     """The token. Hand it only to the signed-in customer it names."""
     customer: str
     """The customer's external id."""
@@ -1495,7 +1617,7 @@ class SnapshotKeys:
 class IssuedSnapshot:
     """A signed snapshot of a customer's entitlements, for offline use."""
 
-    token: str
+    token: str = field(repr=False)
     """The snapshot. Verify it with `verify_snapshot`."""
     expires_at: datetime
     """When it expires."""
@@ -1627,8 +1749,8 @@ class UsageEventInput:
 
     customer: str
     """The customer's external id."""
-    feature: Feature[object] | str
-    """The metered feature."""
+    feature: Feature[Metered]
+    """The metered feature: a constant, or `Feature.metered("key")` for a plain key."""
     amount: int
     """The amount used, a whole number from 1."""
     idempotency_key: str
@@ -1645,3 +1767,7 @@ class Sku:
     """Where it was bought, such as `apple` or `google`."""
     ids: Mapping[str, str]
     """The provider's ids, by field, such as `{"productId": "pro_monthly"}`."""
+
+
+PlanChoice: TypeAlias = str | Sku
+"""The plan `set_plan` moves a customer to: a plan's key or id, or a `Sku` a store sold."""

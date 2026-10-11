@@ -1,7 +1,14 @@
 """Tests of the app's gating and billing code, with no network: run `pytest examples/testing`."""
 
 import pytest
-from gating import UpgradeRequiredError, checkout, export_pdf, summarise, upgrade_buttons
+from gating import (
+    AlreadyDoneError,
+    UpgradeRequiredError,
+    checkout,
+    export_pdf,
+    summarise,
+    upgrade_buttons,
+)
 
 from entitler.testing import answers, fake_customer, metered
 
@@ -52,3 +59,13 @@ def test_checkout_sends_the_customer_to_pay() -> None:
     customer.answer("subscribe", lambda call: answers.subscribe_step(next="pay", url="https://pay"))
     assert checkout(customer, "pro", "https://app.example.com/billing/return") == "https://pay"
     assert customer.writes[-1].arguments["plan"] == "pro"
+
+
+def test_a_summary_without_credits_needs_an_upgrade_and_a_rerun_charges_nothing() -> None:
+    with pytest.raises(UpgradeRequiredError):
+        summarise(fake_customer({"ai_credits": metered(value=10)}), "job-1", "text")
+    customer = fake_customer({"ai_credits": metered(value=100)})
+    summarise(customer, "job-2", "one two")
+    with pytest.raises(AlreadyDoneError):
+        summarise(customer, "job-2", "one two")
+    assert customer.check("ai_credits").used == 2

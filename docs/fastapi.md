@@ -18,6 +18,7 @@ from entitler import (
     CustomerTokenScope,
     Feature,
     UsageRefusedError,
+    UsageReplayedError,
 )
 
 
@@ -64,8 +65,9 @@ controls.
 
 ## Streaming metered work
 
-Start the hold before the response starts, so a refusal is still a `402`; the hold settles when the
-stream ends, even when the client disconnects halfway:
+Start the hold before the response starts, so a refusal is still a `402`, and a replayed message
+a `409` rather than a second charge; the hold settles when the stream ends, even when the client
+disconnects halfway:
 
 ```python
 async def generate(prompt: str) -> AsyncGenerator[str, None]:
@@ -81,6 +83,8 @@ async def chat(message_id: str, prompt: str, customer: SignedIn) -> StreamingRes
         )
     except UsageRefusedError:
         raise HTTPException(status_code=402, detail="No credits left.") from None
+    except UsageReplayedError:
+        raise HTTPException(status_code=409, detail="This message was already answered.") from None
 
     async def stream() -> AsyncGenerator[str, None]:
         async with hold:

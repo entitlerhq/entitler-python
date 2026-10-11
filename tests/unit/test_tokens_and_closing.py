@@ -220,6 +220,92 @@ async def test_async_waiters_share_one_refresh_and_one_may_cancel() -> None:
 
 
 @pytest.mark.anyio
+async def test_the_caller_that_starts_a_refresh_can_be_cancelled_at_once() -> None:
+    transport = wired(Transport())
+    calls: list[int] = []
+    started = anyio.Event()
+    release = anyio.Event()
+
+    async def provider() -> str:
+        calls.append(1)
+        started.set()
+        await release.wait()
+        return token(NOW, 9_999_999_999)
+
+    client = AsyncEntitlerClient(token=provider, http_client=transport.async_client(), cache=None)
+    results: list[bool] = []
+
+    async def read() -> None:
+        results.append((await client.me.check("sso")).entitled)
+
+    with anyio.move_on_after(0.05) as first:
+        await client.me.check("sso")
+    assert first.cancelled_caught
+    assert started.is_set()
+    async with anyio.create_task_group() as group:
+        group.start_soon(read)
+        await anyio.sleep(0.01)
+        release.set()
+    assert calls == [1]
+    assert results == [True]
+    await client.aclose()
+
+
+@pytest.mark.anyio
+async def test_a_failed_async_refresh_is_not_kept() -> None:
+    transport = wired(Transport())
+    answers_given = iter(["", token(NOW, 9_999_999_999)])
+
+    async def provider() -> str:
+        return next(answers_given)
+
+    client = AsyncEntitlerClient(token=provider, http_client=transport.async_client(), cache=None)
+    with pytest.raises(TokenError, match="blank token"):
+        await client.me.check("sso")
+    assert (await client.me.check("sso")).entitled
+    await client.aclose()
+
+
+@pytest.mark.anyio
+async def test_a_providers_fatal_error_is_never_wrapped() -> None:
+    async def provider() -> str:
+        raise MemoryError
+
+    client = AsyncEntitlerClient(token=provider)
+    with pytest.raises(MemoryError):
+        await client.me.check("sso")
+    await client.aclose()
+
+
+def test_a_sync_providers_fatal_error_is_never_wrapped() -> None:
+    def provider() -> str:
+        raise RecursionError
+
+    with pytest.raises(RecursionError):
+        EntitlerClient(token=provider).me.check("sso")
+
+
+def test_a_hanging_sync_provider_blocks_other_threads_for_the_timeout_at_most() -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    def provider() -> str:
+        entered.set()
+        release.wait(5)
+        return token(NOW, 9_999_999_999)
+
+    client = EntitlerClient(token=provider, timeout=0.1, cache=None)
+    first = threading.Thread(target=lambda: client.me.is_entitled("sso", default=False))
+    first.start()
+    entered.wait(5)
+    with pytest.raises(TokenError, match=r"did not answer within 0\.1 seconds"):
+        client.me.check("sso")
+    release.set()
+    first.join(5)
+    client.close()
+
+
+@pytest.mark.anyio
 async def test_a_hanging_provider_times_out_as_a_token_error() -> None:
     async def provider() -> str:
         await anyio.sleep_forever()
@@ -431,11 +517,11 @@ def test_options_are_checked() -> None:
     with pytest.raises(ValueError, match="Pass timeout"):
         EntitlerServer(KEY, timeout=float("inf"))
     with pytest.raises(ValueError, match=r"Pass timeout as a number of seconds above 0\."):
-        EntitlerServer(KEY, timeout=None)  # type: ignore[arg-type]
+        EntitlerServer(KEY, timeout=None)  # type: ignore[arg-type]  # an invalid option, which the client must refuse
     with pytest.raises(TypeError, match="Pass on_error"):
-        EntitlerServer(KEY, on_error="print")  # type: ignore[arg-type]
+        EntitlerServer(KEY, on_error="print")  # type: ignore[arg-type]  # an invalid option, which the client must refuse
     with pytest.raises(TypeError, match="Pass cache"):
-        EntitlerServer(KEY, cache="redis")  # type: ignore[arg-type]
+        EntitlerServer(KEY, cache="redis")  # type: ignore[arg-type]  # an invalid option, which the client must refuse
     with pytest.raises(ValueError, match="Pass base_url"):
         EntitlerServer(KEY, base_url=" ")
 
@@ -447,7 +533,7 @@ def test_options_are_checked() -> None:
             return None
 
     with pytest.raises(TypeError, match="AsyncEntitlerServer"):
-        EntitlerServer(KEY, cache=AsyncStore())  # type: ignore[arg-type]
+        EntitlerServer(KEY, cache=AsyncStore())  # type: ignore[arg-type]  # an invalid option, which the client must refuse
     AsyncEntitlerServer(KEY, cache=AsyncStore())
     assert repr(EntitlerServer(KEY, base_url="http://localhost:8787/")) == (
         "EntitlerServer(base_url='http://localhost:8787', kind='server')"

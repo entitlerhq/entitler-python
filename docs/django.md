@@ -30,7 +30,7 @@ from typing import Any
 
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
-from entitler import Feature, ServerCustomer
+from entitler import Feature, ServerCustomer, UsageRefusedError, UsageReplayedError
 
 View = Callable[..., HttpResponse]
 
@@ -73,14 +73,21 @@ def summarise(request: HttpRequest, job_id: str) -> HttpResponse:
     customer = signed_in_customer(request)
     if customer is None:
         return JsonResponse({"error": "Sign in first."}, status=401)
-    with customer.with_hold(features.AI_CREDITS, 500, idempotency_key=f"summary-{job_id}") as hold:
-        words = 120
-        hold.use(words)
+    try:
+        with customer.with_hold(
+            features.AI_CREDITS, 500, idempotency_key=f"summary-{job_id}"
+        ) as hold:
+            words = 120
+            hold.use(words)
+    except UsageRefusedError:
+        return JsonResponse({"error": "No credits left."}, status=402)
+    except UsageReplayedError:
+        return JsonResponse({"error": "This summary was already made."}, status=409)
     return JsonResponse({"words": words})
 ```
 
-`with_hold` raises `UsageRefusedError` before the body runs when the customer has no allowance;
-handle it as a `402`.
+`with_hold` raises `UsageRefusedError` (no allowance) or `UsageReplayedError` (this job already ran)
+before the body runs, so neither charges twice.
 
 ## Keeping Entitler's copy current
 

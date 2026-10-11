@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
@@ -17,7 +17,7 @@ class CacheEntry:
     supported.
     """
 
-    body: str
+    body: str = field(repr=False)
     """The answer body, as the JSON text Entitler sent."""
     etag: str | None
     """The answer's `ETag`, for revalidating it."""

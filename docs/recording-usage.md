@@ -102,10 +102,15 @@ The `:excess` suffix limits these keys to 193 characters.
 ### `with_hold` for work inside one call
 
 ```python
-def summarise(job_id: str, text: str) -> str:
-    with customer.with_hold(features.AI_CREDITS, 500, idempotency_key=job_id) as hold:
-        summary = text[:200]
-        hold.use(len(summary.split()))
+def summarise(job_id: str, text: str) -> str | None:
+    try:
+        with customer.with_hold(features.AI_CREDITS, 500, idempotency_key=job_id) as hold:
+            summary = text[:200]
+            hold.use(len(summary.split()))
+    except UsageRefusedError:
+        return None  # offer an upgrade
+    except UsageReplayedError:
+        return None  # the job already ran: show the summary it made
     return summary
 ```
 

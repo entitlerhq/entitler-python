@@ -13,22 +13,25 @@ import pytest
 
 from entitler import (
     APIError,
+    AsyncEntitlerServer,
     BooleanCheck,
     CustomerTokenScope,
     EntitlerClient,
+    EntitlerConnectionError,
     EntitlerServer,
     Feature,
     MeteredCheck,
     PlanBilling,
     ServerCustomer,
     Sku,
+    UsageEventInput,
     UsageMode,
     When,
     __version__,
 )
 from entitler.testing import answers
 
-from .support import KEY, Transport, ok, wired
+from .support import KEY, Clock, Transport, ok, wired
 
 CREDITS = Feature.metered("ai_credits")
 LATER = datetime(2026, 7, 1, 19, 30, tzinfo=timezone(timedelta(hours=10)))
@@ -634,8 +637,8 @@ def test_create_answers_details_with_a_usage_log(transport: Transport) -> None:
 def test_erase_accepts_an_empty_answer(transport: Transport) -> None:
     server = make(transport)
     transport.answers = [{"status": 204}, ok(answers.customer_summary())]
-    assert server.customer("u").erase() is None  # type: ignore[func-returns-value]
-    assert server.customer("u").erase() is None  # type: ignore[func-returns-value]
+    assert server.customer("u").erase() is None  # type: ignore[func-returns-value]  # erase answers None, which the test checks
+    assert server.customer("u").erase() is None  # type: ignore[func-returns-value]  # erase answers None, which the test checks
 
 
 REFUSALS: list[tuple[Callable[[ServerCustomer], Any], str]] = [
@@ -648,12 +651,12 @@ REFUSALS: list[tuple[Callable[[ServerCustomer], Any], str]] = [
         "Name the plan by its id or its key.",
     ),
     (lambda c: c.set_track(""), "Name the track by its name."),
-    (lambda c: c.set_plan(None), "Pass product: the product whose plan ends."),  # type: ignore[call-overload]
+    (lambda c: c.set_plan(None), "Pass product: the product whose plan ends."),  # type: ignore[call-overload]  # an argument combination the SDK must refuse
     (
-        lambda c: c.set_plan(None, product="app", period="m"),  # type: ignore[call-overload]
+        lambda c: c.set_plan(None, product="app", period="m"),  # type: ignore[call-overload]  # an argument combination the SDK must refuse
         "Pass no period, until or version when ending a plan.",
     ),
-    (lambda c: c.set_plan("pro", product="app"), "Pass product only when ending a plan."),  # type: ignore[call-overload]
+    (lambda c: c.set_plan("pro", product="app"), "Pass product only when ending a plan."),  # type: ignore[call-overload]  # an argument combination the SDK must refuse
     (
         lambda c: c.adjust_meter(CREDITS, idempotency_key="k"),
         "Pass either by, a whole number other than 0, or to, a whole number of 0 or more.",
@@ -675,7 +678,7 @@ REFUSALS: list[tuple[Callable[[ServerCustomer], Any], str]] = [
         "Pass amount as a whole number from 1 to 9007199254740991.",
     ),
     (
-        lambda c: c.record_usage(CREDITS, 1.5, idempotency_key="k"),  # type: ignore[arg-type]
+        lambda c: c.record_usage(CREDITS, 1.5, idempotency_key="k"),  # type: ignore[arg-type]  # a wrong type the SDK must refuse
         "Pass amount as a whole number from 1 to 9007199254740991.",
     ),
     (
@@ -721,21 +724,13 @@ REFUSALS: list[tuple[Callable[[ServerCustomer], Any], str]] = [
         lambda c: c.is_entitled("sso", default=False, timeout=-1),
         "Pass timeout as a number of seconds above 0.",
     ),
+    (lambda c: c.is_entitled("sso", default="no"), "Pass default as True or False."),  # type: ignore[arg-type]  # a wrong type the SDK must refuse
     (
-        lambda c: c.is_entitled("sso", default=False, timeout=None),  # type: ignore[arg-type]
-        "Pass timeout as a number of seconds above 0.",
-    ),
-    (
-        lambda c: c.record_usage(CREDITS, 1, idempotency_key="k", timeout=None),  # type: ignore[arg-type]
-        "Pass timeout as a number of seconds above 0.",
-    ),
-    (lambda c: c.is_entitled("sso", default="no"), "Pass default as True or False."),  # type: ignore[arg-type]
-    (
-        lambda c: c.set_plan(Sku(connector="apple", ids={}), period="monthly"),  # type: ignore[call-overload]
+        lambda c: c.set_plan(Sku(connector="apple", ids={}), period="monthly"),  # type: ignore[call-overload]  # an argument combination the SDK must refuse
         "Pass no period with a SKU, which names its own.",
     ),
     (
-        lambda c: c.set_plan(None, product="app", billing=PlanBilling.KEEP),  # type: ignore[call-overload]
+        lambda c: c.set_plan(None, product="app", billing=PlanBilling.KEEP),  # type: ignore[call-overload]  # an argument combination the SDK must refuse
         "Pass billing as PlanBilling.PROVIDER or PlanBilling.END when ending a plan.",
     ),
 ]
@@ -782,3 +777,74 @@ def test_injected_clients_never_follow_redirects(transport: Transport) -> None:
     assert raised.value.status == 307
     assert raised.value.code == "http_error"
     assert seen == ["https://api.entitler.dev/customers/u/usage"]
+
+
+def test_a_calls_timeout_of_none_uses_the_clients(transport: Transport) -> None:
+    wired(transport)
+    client = EntitlerServer(KEY, timeout=3.5, http_client=transport.client(), cache=None)
+    client.customer("u").check("sso", timeout=None)
+    client.customer("u").record_usage(CREDITS, 1, idempotency_key="k", timeout=None)
+    client.customer("u").check("sso", timeout=1.5)
+    timeouts = [request.extensions["timeout"]["read"] for request in transport.requests]
+    assert timeouts == [3.5, 3.5, 1.5]
+
+
+def corrupt_gzip(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(
+        200, headers={"Content-Encoding": "gzip"}, content=b"not gzip at all", request=request
+    )
+
+
+def test_a_corrupt_compressed_answer_is_a_sanitised_connection_error() -> None:
+    http = httpx.Client(transport=httpx.MockTransport(corrupt_gzip))
+    seen: list[Exception] = []
+    client = EntitlerServer(KEY, http_client=http, max_retries=0, on_error=seen.append)
+    with pytest.raises(EntitlerConnectionError) as raised:
+        client.customer("u").check("sso")
+    chain = [raised.value, raised.value.__cause__, raised.value.__context__]
+    assert all(KEY not in repr(link) and KEY not in str(link) for link in chain)
+    assert not isinstance(raised.value.__cause__, httpx.HTTPError)
+    assert client.customer("u").is_entitled("sso", default=True) is True
+    assert isinstance(seen[-1], EntitlerConnectionError)
+    events = [UsageEventInput(customer="u", feature=CREDITS, amount=1, idempotency_key="e")]
+    result = client.record_usage_batch(events)
+    assert result.results[0].error is not None
+    assert result.results[0].error.code == "connection_failed"
+
+
+@pytest.mark.anyio
+async def test_a_corrupt_compressed_answer_is_a_connection_error_in_async_code() -> None:
+    http = httpx.AsyncClient(transport=httpx.MockTransport(corrupt_gzip))
+    client = AsyncEntitlerServer(KEY, http_client=http, max_retries=0)
+    with pytest.raises(EntitlerConnectionError):
+        await client.customer("u").check("sso")
+    await client.aclose()
+
+
+def test_tokens_headers_and_bodies_never_show_in_a_repr() -> None:
+    from entitler import CacheEntry, IssuedCustomerToken, IssuedSnapshot
+    from entitler._engine import Attempt, Authorised
+
+    secret = "eyJ.secret.token"
+    shown = [
+        IssuedCustomerToken(token=secret, customer="u", scopes=(), expires_at=datetime.now(UTC)),
+        IssuedSnapshot(token=secret, expires_at=datetime.now(UTC), key_id="k"),
+        Authorised({"Authorization": f"Bearer {secret}"}, "customer-token", secret, secret),
+        Attempt("GET", "https://api.entitler.dev/x", {"Authorization": secret}, None, 1.0, None),
+        CacheEntry(
+            body=secret, etag=None, cache_control=None, age=None, received_at=datetime.now(UTC)
+        ),
+    ]
+    for value in shown:
+        assert secret not in repr(value)
+
+
+def test_the_backoff_bound_never_overflows_however_many_retries(
+    transport: Transport, clock: Clock
+) -> None:
+    transport.fallback = lambda request: httpx.Response(503, request=request)
+    client = EntitlerServer(KEY, http_client=transport.client(), max_retries=1100, cache=None)
+    with pytest.raises(APIError):
+        client.customer("u").check("sso")
+    assert len(transport.requests) == 1101
+    assert max(clock.waits) <= 8.0

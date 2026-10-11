@@ -47,8 +47,9 @@ def upgrade_or_explain(customer_id: str) -> str:
 Besides Entitler's own codes, the SDK uses `http_error` (an error status whose body names no code,
 and every `3xx`, since the clients never follow redirects), `invalid_response` (an answer that is
 not JSON or lacks a field Entitler documents; its message is `Entitler sent an answer this SDK
-cannot read.` and its cause names the failing path, never the body), and, on batch results only,
-`connection_failed` and `timed_out`.
+cannot read.` and its cause names the failing path, never the body), and `connection_failed` and
+`timed_out`, which appear only on batch results and in the command-line tool's failure line
+(`Entitler request failed: Entitler could not be reached (connection_failed).`).
 
 API messages are written for you, the developer, not for your customers: log them, and show
 customers copy of your own.

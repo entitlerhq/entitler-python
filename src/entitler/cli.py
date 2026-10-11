@@ -20,7 +20,6 @@ from typing import TextIO
 from ._errors import APIError, EntitlerConnectionError, EntitlerTimeoutError
 from ._models import FeatureList, FeatureListing, FeatureType
 from ._ops import snapshot_keys
-from ._values import CLIENT_TIMEOUT
 
 __all__ = ["main", "render_features", "same_features"]
 
@@ -355,7 +354,7 @@ def _snapshot_keys(options: Mapping[str, str | bool]) -> tuple[int, str]:
     assert isinstance(server, EntitlerServer)  # noqa: S101 - built above
     with server:
         try:
-            keys, raw = server._driver.run(snapshot_keys(server._driver.engine, CLIENT_TIMEOUT))
+            keys, raw = server._driver.run(snapshot_keys(server._driver.engine, None))
         except (APIError, EntitlerConnectionError, EntitlerTimeoutError) as error:
             return 1, _failure(error)
     if not keys.keys:

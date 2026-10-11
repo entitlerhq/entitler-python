@@ -8,7 +8,6 @@ from typing import Generic, TypeVar
 from ._models import CustomerPage, CustomerSummary, Page, UsageEvent
 
 T = TypeVar("T")
-P = TypeVar("P", bound=Page[object])
 
 
 class Pager(Generic[T]):

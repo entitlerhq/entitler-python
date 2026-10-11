@@ -1,6 +1,6 @@
 """App code under test: gating an export, and charging for a summary."""
 
-from entitler import Customer, Feature, NextStep
+from entitler import Customer, Feature, NextStep, UsageRefusedError, UsageReplayedError
 
 EXPORT_PDF = Feature.boolean("export_pdf")
 AI_CREDITS = Feature.metered("ai_credits")
@@ -17,11 +17,20 @@ def export_pdf(customer: Customer, document: str) -> bytes:
     return document.encode()
 
 
+class AlreadyDoneError(Exception):
+    """The job already ran: show its result rather than run it again."""
+
+
 def summarise(customer: Customer, job_id: str, text: str) -> str:
     """Summarises text, charging one credit per word of the summary."""
-    with customer.with_hold(AI_CREDITS, 50, idempotency_key=job_id) as hold:
-        summary = " ".join(text.split()[:5])
-        hold.use(len(summary.split()))
+    try:
+        with customer.with_hold(AI_CREDITS, 50, idempotency_key=job_id) as hold:
+            summary = " ".join(text.split()[:5])
+            hold.use(len(summary.split()))
+    except UsageRefusedError as refused:
+        raise UpgradeRequiredError from refused
+    except UsageReplayedError as replayed:
+        raise AlreadyDoneError from replayed
     return summary
 
 

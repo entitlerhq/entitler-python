@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
+import contextlib
 import inspect
 import json
 import re
 import threading
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine, Generator
 from typing import Any, TypeVar, cast
 
 import anyio
@@ -86,14 +88,17 @@ def expires_soon(token: str, received_at: float, now: float) -> bool:
     return end - now <= min(REFRESH_BEFORE, (end - start) / 2)
 
 
+FATAL = (MemoryError, RecursionError)
+"""Errors a token provider raises that are never wrapped as a `TokenError`."""
+
+
 class _TokenState:
     """A token kept from a fixed string or a provider."""
 
-    def __init__(self, given: object, blank: str) -> None:
+    def __init__(self, given: object) -> None:
         self.refreshable = callable(given)
         self.current: str | None = None if self.refreshable else trim(cast("str", given))
         self.received_at = 0.0
-        self.blank = blank
 
     def kept(self) -> str | None:
         current = self.current
@@ -112,12 +117,21 @@ class _TokenState:
         return token
 
 
-class SyncToken:
-    """A token for the blocking client: one refresh at a time, behind a lock."""
+def _late(seconds: float) -> TokenError:
+    return TokenError(f"The token provider did not answer within {seconds:g} seconds.")
 
-    def __init__(self, given: str | TokenProvider, blank: str) -> None:
-        self._state = _TokenState(given, blank)
+
+class SyncToken:
+    """A token for the blocking client: one refresh at a time, behind a lock.
+
+    A thread waits for another thread's refresh for at most the client's timeout, so a provider
+    that hangs blocks no other thread for longer than that.
+    """
+
+    def __init__(self, given: str | TokenProvider, engine: Engine) -> None:
+        self._state = _TokenState(given)
         self._provider = given if callable(given) else None
+        self._engine = engine
         self._lock = threading.Lock()
 
     @property
@@ -130,85 +144,120 @@ class SyncToken:
         kept = self._state.kept()
         if kept is not None:
             return kept
-        with self._lock:
+        with self._locked():
             kept = self._state.kept()
             return kept if kept is not None else self._ask()
 
     def refresh(self, used: str) -> str:
         """A newer token after a `401`: the one kept when it differs from `used`, else a new one."""
-        with self._lock:
+        with self._locked():
             current = self._state.current
             return current if current is not None and current != used else self._ask()
+
+    @contextlib.contextmanager
+    def _locked(self) -> Generator[None]:
+        seconds = self._engine.timeout
+        if not self._lock.acquire(timeout=min(seconds, _clock.MAX_WAIT)):
+            raise _late(seconds)
+        try:
+            yield
+        finally:
+            self._lock.release()
 
     def _ask(self) -> str:
         provider = cast("TokenProvider", self._provider)
         try:
             answer = provider()
+        except FATAL:
+            raise
         except Exception as error:
             raise TokenError("The token provider failed.") from error
         return self._state.accept(answer)
 
 
-class AsyncToken:
-    """An async client's token: one refresh at a time, which a cancelled waiter never stops."""
+class _Refresh:
+    """One refresh in flight, whose outcome every caller waiting for it reads."""
 
-    def __init__(self, given: str | AsyncTokenProvider, blank: str, driver: AsyncDriver) -> None:
-        self._state = _TokenState(given, blank)
+    def __init__(self) -> None:
+        self.done = anyio.Event()
+        self.token: str | None = None
+        self.failure: BaseException | None = None
+
+
+class AsyncToken:
+    """An async client's token: one refresh at a time, which no waiter's cancellation stops.
+
+    The refresh runs in a task of its own, outside every caller's cancel scope, bounded by the
+    client's timeout and cancelled by `aclose()`. Each caller, the first included, waits for its
+    outcome in its own scope, so a cancelled caller stops waiting at once.
+    """
+
+    def __init__(self, given: str | AsyncTokenProvider, driver: AsyncDriver) -> None:
+        self._state = _TokenState(given)
         self._provider = given if callable(given) else None
         self._driver = driver
-        self._lock: anyio.Lock | None = None
+        self._pending: _Refresh | None = None
 
     @property
     def refreshable(self) -> bool:
         """True for a provider."""
         return self._provider is not None
 
-    def _guard(self) -> anyio.Lock:
-        if self._lock is None:
-            self._lock = anyio.Lock()
-        return self._lock
-
     async def get(self) -> str:
         """The kept token, or a new one from the provider."""
         kept = self._state.kept()
-        if kept is not None:
-            return kept
-        async with self._guard():
-            kept = self._state.kept()
-            return kept if kept is not None else await self._ask()
+        return kept if kept is not None else await self._ask()
 
     async def refresh(self, used: str) -> str:
         """A newer token after a `401`: the one kept when it differs from `used`, else a new one."""
-        async with self._guard():
-            current = self._state.current
-            return current if current is not None and current != used else await self._ask()
+        current = self._state.current
+        return current if current is not None and current != used else await self._ask()
 
     async def _ask(self) -> str:
-        provider = cast("AsyncTokenProvider", self._provider)
+        pending = self._pending
+        if pending is None:
+            pending = self._pending = _Refresh()
+            self._driver.spawn(self._run, pending)
+        await pending.done.wait()
+        if pending.failure is not None:
+            if isinstance(pending.failure, TokenError):
+                failure = TokenError(str(pending.failure))
+                failure.__cause__ = pending.failure.__cause__
+                raise failure
+            raise pending.failure
+        return cast("str", pending.token)
+
+    async def _run(self, pending: _Refresh) -> None:
         timeout = self._driver.engine.timeout
-        failure: TokenError | None = None
         answer: object = None
         deadline = anyio.CancelScope()
-        with anyio.CancelScope(shield=True) as scope:
-            self._driver.scopes.add(scope)
-            try:
-                with anyio.move_on_after(min(timeout, _clock.MAX_WAIT)) as deadline:
-                    try:
-                        answer = provider()
+        try:
+            with anyio.CancelScope() as scope:
+                self._driver.scopes.add(scope)
+                try:
+                    with anyio.move_on_after(min(timeout, _clock.MAX_WAIT)) as deadline:
+                        answer = self._provider() if self._provider else None
                         if inspect.isawaitable(answer):
                             answer = await answer
-                    except Exception as error:
-                        failure = TokenError("The token provider failed.")
-                        failure.__cause__ = error
-            finally:
-                self._driver.scopes.discard(scope)
-        if scope.cancel_called:
-            raise closed_error()
-        if deadline.cancelled_caught:
-            raise TokenError(f"The token provider did not answer within {timeout:g} seconds.")
-        if failure is not None:
-            raise failure
-        return self._state.accept(answer)
+                finally:
+                    self._driver.scopes.discard(scope)
+            if scope.cancel_called:
+                pending.failure = closed_error()
+            elif deadline.cancelled_caught:
+                pending.failure = _late(timeout)
+            else:
+                pending.token = self._state.accept(answer)
+        except FATAL as error:
+            pending.failure = error
+        except TokenError as error:
+            pending.failure = error
+        except Exception as error:
+            failure = TokenError("The token provider failed.")
+            failure.__cause__ = error
+            pending.failure = failure
+        finally:
+            self._pending = None
+            pending.done.set()
 
 
 class SyncCredentials:
@@ -352,7 +401,7 @@ class SyncDriver:
         try:
             response = self._client.send(_request(self._client, attempt), follow_redirects=False)
             return _received(response)
-        except (httpx.TransportError, httpx.StreamError, OSError) as error:
+        except (httpx.HTTPError, OSError) as error:
             failure = _failure(error, attempt)
         if self.engine.closed:
             raise closed_error()
@@ -379,8 +428,26 @@ class AsyncDriver:
         self.store = store
         self.credentials = AsyncCredentials("server")
         self.scopes: set[anyio.CancelScope] = set()
+        self._tasks: set[asyncio.Task[None]] = set()
         self._client = http_client or httpx.AsyncClient(follow_redirects=False)
         self._owns_client = http_client is None
+
+    def spawn(self, work: Callable[[_Refresh], Coroutine[Any, Any, None]], given: _Refresh) -> None:
+        """Runs `work` in a task of its own, outside the caller's cancel scope.
+
+        On asyncio it is a task the driver keeps until it ends; on trio a system task. Either ends
+        within the client's timeout, and `aclose()` cancels it through the scope it registers.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            import trio
+
+            trio.lowlevel.spawn_system_task(work, given)
+            return
+        task = loop.create_task(work(given))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def run(self, call: Gen[T]) -> T:
         """Runs a call to its answer; closing the client cancels it."""
@@ -435,7 +502,7 @@ class AsyncDriver:
                     _request(self._client, attempt), follow_redirects=False
                 )
             return _received(response)
-        except (httpx.TransportError, httpx.StreamError, OSError) as error:
+        except (httpx.HTTPError, OSError) as error:
             failure = _failure(error, attempt)
         raise failure
 

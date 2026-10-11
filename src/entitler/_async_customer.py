@@ -10,7 +10,6 @@ from typing import Any, Literal, overload
 import anyio
 
 from ._clock import MAX_WAIT
-from ._errors import EntitlerError
 from ._features import Boolean, Config, Feature, Group, Metered
 from ._io import AsyncDriver
 from ._models import (
@@ -36,6 +35,7 @@ from ._models import (
     Page,
     PlanBilling,
     PlanChange,
+    PlanChoice,
     Pricing,
     RegisteredCustomer,
     Sku,
@@ -47,7 +47,6 @@ from ._models import (
 )
 from ._ops import CustomerOps, HoldState, ServerOps
 from ._pages import AsyncUsageLog
-from ._values import CLIENT_TIMEOUT
 
 
 class AsyncHold:
@@ -128,7 +127,7 @@ class AsyncHold:
 
     async def _act(self, finish: bool) -> UsageResult:
         state = self._state
-        seconds = state.deadline
+        seconds = self._driver.engine.timeout if state.seconds is None else state.seconds
         if self._lock is None:
             self._lock = anyio.Lock()
         with anyio.move_on_after(min(seconds, MAX_WAIT), shield=True) as scope:
@@ -159,7 +158,7 @@ class AsyncHold:
             return
         try:
             await self._act(self._state.used is not None)
-        except EntitlerError as error:
+        except Exception as error:
             self._driver.engine.report(error)
 
     async def __aenter__(self) -> AsyncHold:
@@ -180,8 +179,8 @@ class AsyncCustomer:
 
     Example:
         ```python
-        def export_document(customer: AsyncCustomer, document: Document) -> bytes:
-            if not customer.is_entitled(features.EXPORT_PDF, default=False):
+        async def export_document(customer: AsyncCustomer, document: Document) -> bytes:
+            if not await customer.is_entitled(features.EXPORT_PDF, default=False):
                 raise UpgradeRequired()
             return render_pdf(document)
         ```
@@ -198,42 +197,26 @@ class AsyncCustomer:
 
     @overload
     async def check(
-        self,
-        feature: Feature[Metered],
-        *,
-        revalidate: bool = False,
-        timeout: float = CLIENT_TIMEOUT,
+        self, feature: Feature[Metered], *, revalidate: bool = False, timeout: float | None = None
     ) -> MeteredCheck: ...
     @overload
     async def check(
-        self,
-        feature: Feature[Boolean],
-        *,
-        revalidate: bool = False,
-        timeout: float = CLIENT_TIMEOUT,
+        self, feature: Feature[Boolean], *, revalidate: bool = False, timeout: float | None = None
     ) -> BooleanCheck: ...
     @overload
     async def check(
-        self, feature: Feature[Config], *, revalidate: bool = False, timeout: float = CLIENT_TIMEOUT
+        self, feature: Feature[Config], *, revalidate: bool = False, timeout: float | None = None
     ) -> ConfigCheck: ...
     @overload
     async def check(
-        self, feature: Feature[Group], *, revalidate: bool = False, timeout: float = CLIENT_TIMEOUT
+        self, feature: Feature[Group], *, revalidate: bool = False, timeout: float | None = None
     ) -> GroupCheck: ...
     @overload
     async def check(
-        self,
-        feature: Feature[Any] | str,
-        *,
-        revalidate: bool = False,
-        timeout: float = CLIENT_TIMEOUT,
+        self, feature: Feature[Any] | str, *, revalidate: bool = False, timeout: float | None = None
     ) -> Check: ...
     async def check(
-        self,
-        feature: Feature[Any] | str,
-        *,
-        revalidate: bool = False,
-        timeout: float = CLIENT_TIMEOUT,
+        self, feature: Feature[Any] | str, *, revalidate: bool = False, timeout: float | None = None
     ) -> Check:
         """Checks one feature, through the answer cache.
 
@@ -254,7 +237,7 @@ class AsyncCustomer:
         *,
         default: bool,
         revalidate: bool = False,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> bool:
         """Answers whether the customer is entitled, and never fails because of Entitler.
 
@@ -263,18 +246,19 @@ class AsyncCustomer:
         worse than giving the feature away (fail open).
 
         Raises:
-            ValueError: the feature key is blank, or the timeout is not a positive number.
+            ValueError: the feature key is blank, or the timeout is not a finite number of seconds
+                above 0 (`Pass timeout as a number of seconds above 0.`).
         """
         return await self._driver.run(self._ops.is_entitled(feature, default, revalidate, timeout))
 
     async def entitlements(
-        self, *, revalidate: bool = False, timeout: float = CLIENT_TIMEOUT
+        self, *, revalidate: bool = False, timeout: float | None = None
     ) -> Entitlements[Environment]:
         """The customer's entitlements, groups included, through the answer cache."""
         return await self._driver.run(self._ops.entitlements(revalidate, timeout))
 
     async def plans(
-        self, *, revalidate: bool = False, timeout: float = CLIENT_TIMEOUT
+        self, *, revalidate: bool = False, timeout: float | None = None
     ) -> CustomerPlans:
         """The paywall's and the billing page's one read, through the answer cache.
 
@@ -286,23 +270,19 @@ class AsyncCustomer:
         return await self._driver.run(self._ops.plans(revalidate, timeout))
 
     async def pricing(
-        self,
-        *,
-        visitor: str | None = None,
-        revalidate: bool = False,
-        timeout: float = CLIENT_TIMEOUT,
+        self, *, visitor: str | None = None, revalidate: bool = False, timeout: float | None = None
     ) -> Pricing:
         """The pricing on sale to the customer, through the answer cache."""
         return await self._driver.run(self._ops.pricing(visitor, revalidate, timeout))
 
     async def usage(
-        self, *, cursor: str | None = None, timeout: float = CLIENT_TIMEOUT
+        self, *, cursor: str | None = None, timeout: float | None = None
     ) -> CustomerUsage[AsyncUsageLog]:
         """The customer's meters and usage log, from the page `cursor` names when given."""
         return await self._driver.run(self._ops.usage(cursor, timeout, self._log(timeout, None)))
 
     def _log(
-        self, timeout: float, as_of: datetime | None
+        self, timeout: float | None, as_of: datetime | None
     ) -> Callable[[Page[UsageEvent]], AsyncUsageLog]:
         return lambda first: AsyncUsageLog(
             first, lambda cursor: self._driver.run(self._ops.usage_page(cursor, timeout, as_of))
@@ -317,7 +297,7 @@ class AsyncCustomer:
         mode: UsageMode | None = None,
         occurred_at: datetime | None = None,
         register: bool | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> UsageResult:
         """Records usage of a metered feature: a whole number from 1 in the feature's unit.
 
@@ -348,7 +328,7 @@ class AsyncCustomer:
         *,
         idempotency_key: str,
         ttl_seconds: int | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> AsyncHold:
         """Holds `amount` before any work starts, and answers the open `AsyncHold`.
 
@@ -373,7 +353,7 @@ class AsyncCustomer:
         *,
         idempotency_key: str,
         ttl_seconds: int | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> AbstractAsyncContextManager[AsyncHold]:
         """Holds `amount` around a block of work, and finishes the hold when the block ends.
 
@@ -398,7 +378,7 @@ class AsyncCustomer:
         amount: int,
         key: str,
         ttl_seconds: int | None,
-        timeout: float,
+        timeout: float | None,
     ) -> AsyncGenerator[AsyncHold]:
         hold = await self.start_hold(
             feature, amount, idempotency_key=key, ttl_seconds=ttl_seconds, timeout=timeout
@@ -417,7 +397,7 @@ class AsyncCustomer:
         *,
         idempotency_key: str,
         ttl_seconds: int | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> UsageResult:
         """Holds an amount and answers the hold's `UsageResult`, for a hold settled elsewhere."""
         return await self._driver.run(
@@ -430,7 +410,7 @@ class AsyncCustomer:
         amount: int,
         *,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> UsageResult:
         """Settles a hold with the real amount, from 0 to the amount held."""
         return await self._driver.run(
@@ -438,13 +418,13 @@ class AsyncCustomer:
         )
 
     async def release_usage(
-        self, hold_id: str, *, idempotency_key: str | None = None, timeout: float = CLIENT_TIMEOUT
+        self, hold_id: str, *, idempotency_key: str | None = None, timeout: float | None = None
     ) -> UsageResult:
         """Releases a hold, recording nothing. Releasing twice is safe."""
         return await self._driver.run(self._ops.release_usage(hold_id, idempotency_key, timeout))
 
     async def snapshot(
-        self, *, ttl_seconds: int | None = None, timeout: float = CLIENT_TIMEOUT
+        self, *, ttl_seconds: int | None = None, timeout: float | None = None
     ) -> IssuedSnapshot:
         """Signs the customer's entitlements for offline use; check it with `verify_snapshot`."""
         return await self._driver.run(self._ops.snapshot(ttl_seconds, timeout))
@@ -458,7 +438,7 @@ class AsyncCustomer:
         return_url: str | None = None,
         register: bool | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> SubscribeStep:
         """Moves the customer to a plan, or adds an add-on, as their own choice.
 
@@ -489,7 +469,7 @@ class AsyncCustomer:
         add_on: str | None = None,
         product: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> PlanChange:
         """Cancels the plan, or the add-on `add_on` names, as the customer's own choice.
 
@@ -506,7 +486,7 @@ class AsyncCustomer:
         add_on: str | None = None,
         product: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> PlanChange:
         """Undoes the change booked for renewal on the plan, or on the add-on `add_on` names.
 
@@ -518,7 +498,7 @@ class AsyncCustomer:
         )
 
     async def billing_portal(
-        self, *, return_url: str, timeout: float = CLIENT_TIMEOUT
+        self, *, return_url: str, timeout: float | None = None
     ) -> BillingPortal:
         """Opens the provider's page for payment details and invoices. It changes no plan.
 
@@ -527,7 +507,7 @@ class AsyncCustomer:
         """
         return await self._driver.run(self._ops.billing_portal(return_url, timeout))
 
-    async def sync_billing(self, *, timeout: float = CLIENT_TIMEOUT) -> BillingSync:
+    async def sync_billing(self, *, timeout: float | None = None) -> BillingSync:
         """Reads the customer's state from the provider now, for the page they return to.
 
         Call it before `plans(revalidate=True)`, so the customer sees the plan they paid for.
@@ -563,7 +543,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> MeteredCheck: ...
     @overload
     async def check(
@@ -572,7 +552,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> BooleanCheck: ...
     @overload
     async def check(
@@ -581,7 +561,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> ConfigCheck: ...
     @overload
     async def check(
@@ -590,7 +570,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> GroupCheck: ...
     @overload
     async def check(
@@ -599,7 +579,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> Check: ...
     async def check(
         self,
@@ -607,7 +587,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> Check:
         """Checks one feature, through the answer cache, at `as_of` when given."""
         return await self._driver.run(self._ops.check(feature, revalidate, timeout, as_of))
@@ -619,7 +599,7 @@ class AsyncServerCustomer(AsyncCustomer):
         default: bool,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> bool:
         """As `AsyncCustomer.is_entitled`, at `as_of` when given."""
         return await self._driver.run(
@@ -631,7 +611,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> Entitlements[Environment]:
         """As `AsyncCustomer.entitlements`, at `as_of` when given."""
         return await self._driver.run(self._ops.entitlements(revalidate, timeout, as_of))
@@ -641,7 +621,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> CustomerPlans:
         """As `AsyncCustomer.plans`, at `as_of` when given."""
         return await self._driver.run(self._ops.plans(revalidate, timeout, as_of))
@@ -651,7 +631,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         cursor: str | None = None,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> CustomerUsage[AsyncUsageLog]:
         """As `AsyncCustomer.usage`, at `as_of` when given."""
         return await self._driver.run(
@@ -666,7 +646,7 @@ class AsyncServerCustomer(AsyncCustomer):
         metadata: Mapping[str, str | None] | None = None,
         visitor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> RegisteredCustomer:
         """Registers the customer, or keeps their details current.
 
@@ -683,7 +663,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         cursor: str | None = None,
         as_of: datetime | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> CustomerDetail[AsyncUsageLog]:
         """The customer's plans, add-ons, grants, entitlements and usage log."""
 
@@ -702,7 +682,7 @@ class AsyncServerCustomer(AsyncCustomer):
         email: str | None = None,
         metadata: Mapping[str, str | None] | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> CustomerSummary:
         """Changes the customer's details; a `None` metadata value removes that key."""
         return await self._driver.run(
@@ -710,7 +690,7 @@ class AsyncServerCustomer(AsyncCustomer):
         )
 
     async def erase(
-        self, *, idempotency_key: str | None = None, timeout: float = CLIENT_TIMEOUT
+        self, *, idempotency_key: str | None = None, timeout: float | None = None
     ) -> None:
         """Erases the customer, as app stores require for account deletion.
 
@@ -725,7 +705,7 @@ class AsyncServerCustomer(AsyncCustomer):
         *,
         scopes: Sequence[CustomerTokenScope] | None = None,
         ttl_seconds: int | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> IssuedCustomerToken:
         """Mints a customer token for an in-app client.
 
@@ -740,7 +720,7 @@ class AsyncServerCustomer(AsyncCustomer):
         track: str | None,
         *,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> CustomerTrack:
         """Puts the customer on a track by its name, or with `None` back on All customers.
 
@@ -749,7 +729,7 @@ class AsyncServerCustomer(AsyncCustomer):
         """
         return await self._driver.run(self._ops.set_track(track, idempotency_key, timeout))
 
-    async def billing(self, *, timeout: float = CLIENT_TIMEOUT) -> CustomerBilling:
+    async def billing(self, *, timeout: float | None = None) -> CustomerBilling:
         """The payment provider's view, for support tools. Billing pages read `plans()`."""
         return await self._driver.run(self._ops.billing(timeout))
 
@@ -767,7 +747,7 @@ class AsyncServerCustomer(AsyncCustomer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> PlanChange: ...
     @overload
     async def set_plan(
@@ -781,7 +761,7 @@ class AsyncServerCustomer(AsyncCustomer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> PlanChange: ...
     @overload
     async def set_plan(
@@ -795,11 +775,11 @@ class AsyncServerCustomer(AsyncCustomer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> PlanChange: ...
     async def set_plan(
         self,
-        plan: str | Sku | None,
+        plan: PlanChoice | None,
         *,
         product: str | None = None,
         period: str | None = None,
@@ -811,7 +791,7 @@ class AsyncServerCustomer(AsyncCustomer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> PlanChange:
         """Moves the customer to any plan as the company's decision, under no self-serve rules.
 
@@ -837,7 +817,7 @@ class AsyncServerCustomer(AsyncCustomer):
 
         Example:
             ```python
-            customer.set_plan(
+            await customer.set_plan(
                 "enterprise", period="yearly", billing=PlanBilling.END, actor="hubspot"
             )
             ```
@@ -865,7 +845,7 @@ class AsyncServerCustomer(AsyncCustomer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> PlanChange:
         """Adds an add-on, sets its quantity, or removes it at `0`, taking effect now.
 
@@ -888,7 +868,7 @@ class AsyncServerCustomer(AsyncCustomer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> GrantChange:
         """Grants a feature for `days` (0 or none for good), answering the grant so you keep its id.
 
@@ -905,7 +885,7 @@ class AsyncServerCustomer(AsyncCustomer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> GrantChange:
         """Revokes a grant, and answers it."""
         return await self._driver.run(
@@ -921,7 +901,7 @@ class AsyncServerCustomer(AsyncCustomer):
         to: int | None = None,
         reason: str | None = None,
         actor: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> UsageResult:
         """Moves a meter `by` an amount other than 0, or sets it `to` an amount; never below 0.
 
@@ -939,7 +919,7 @@ class AsyncServerCustomer(AsyncCustomer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float = CLIENT_TIMEOUT,
+        timeout: float | None = None,
     ) -> UsageResult:
         """Cancels a usage report, a correction answered with outcome `cancelled`."""
         return await self._driver.run(

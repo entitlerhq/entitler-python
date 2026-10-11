@@ -340,13 +340,13 @@ def _key_call(case: dict[str, Any], client: EntitlerServer) -> Callable[[], Any]
     method = case["method"]
     metered = Feature.metered("ai_credits")
     if method == "recordUsage":
-        return lambda: customer.record_usage(metered, 1, idempotency_key=key)  # type: ignore[arg-type]
+        return lambda: customer.record_usage(metered, 1, idempotency_key=key)  # type: ignore[arg-type]  # the case may give no key, which the SDK must refuse
     if method == "holdUsage":
-        return lambda: customer.hold_usage(metered, 1, idempotency_key=key)  # type: ignore[arg-type]
+        return lambda: customer.hold_usage(metered, 1, idempotency_key=key)  # type: ignore[arg-type]  # the case may give no key, which the SDK must refuse
     if method == "startHold":
 
         def start() -> Any:
-            hold = customer.start_hold(metered, 1, idempotency_key=key)  # type: ignore[arg-type]
+            hold = customer.start_hold(metered, 1, idempotency_key=key)  # type: ignore[arg-type]  # the case may give no key, which the SDK must refuse
             hold.use(2)
             return hold.finish()
 
@@ -354,12 +354,12 @@ def _key_call(case: dict[str, Any], client: EntitlerServer) -> Callable[[], Any]
     if method == "withHold":
 
         def within() -> Any:
-            with customer.with_hold(metered, 1, idempotency_key=key) as hold:  # type: ignore[arg-type]
+            with customer.with_hold(metered, 1, idempotency_key=key) as hold:  # type: ignore[arg-type]  # the case may give no key, which the SDK must refuse
                 hold.use(2)
 
         return within
     if method == "adjustMeter":
-        return lambda: customer.adjust_meter(metered, by=1, idempotency_key=key)  # type: ignore[arg-type]
+        return lambda: customer.adjust_meter(metered, by=1, idempotency_key=key)  # type: ignore[arg-type]  # the case may give no key, which the SDK must refuse
     if method == "cancel":
         return lambda: customer.cancel(idempotency_key=key)
     if method == "token":
@@ -417,9 +417,9 @@ def _batch_events(case: dict[str, Any]) -> list[Any]:
     return [
         UsageEventInput(
             customer=event["customer"],
-            feature=event["feature"],
+            feature=Feature.metered(event["feature"]),
             amount=event["amount"],
-            idempotency_key=event.get("idempotencyKey"),  # type: ignore[arg-type]
+            idempotency_key=event.get("idempotencyKey"),  # type: ignore[arg-type]  # the case may give no key, which the SDK must refuse
             occurred_at=instant(event["occurredAt"]) if "occurredAt" in event else None,
         )
         for event in events

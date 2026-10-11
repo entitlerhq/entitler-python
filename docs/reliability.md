@@ -5,10 +5,11 @@ The clients are built so that Entitler being slow or down never takes your app d
 ## Timeouts
 
 Each attempt has a deadline: the client's `timeout` (10 seconds by default), overridable per call
-with `timeout=`. Timeouts are float seconds, finite and above 0: `None`, `inf`, `nan`, 0 and
-negatives raise `ValueError` (`Pass timeout as a number of seconds above 0.`) before a request or a
-token provider runs. Leave a call's `timeout` out to use the client's. Every wait and timeout is
-clamped to what `time.sleep`, anyio and httpx can represent.
+with `timeout=`; leave a call's `timeout` out, or pass `None`, to use the client's. A timeout is
+float seconds, finite and above 0: a client built with `None`, `inf`, `nan`, 0 or a negative, or a
+call given `inf`, `nan`, 0 or a negative, raises `ValueError`
+(`Pass timeout as a number of seconds above 0.`) before a request or a token provider runs. Every
+wait and timeout is clamped to what `time.sleep`, anyio and httpx can represent.
 
 - The blocking client hands the deadline to httpx, which applies it to each phase of the attempt
   (connecting, writing, each read), so a very slow trickle of bytes can take longer in total.
