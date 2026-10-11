@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import threading
 from typing import Any
 
@@ -538,3 +539,62 @@ def test_options_are_checked() -> None:
     assert repr(EntitlerServer(KEY, base_url="http://localhost:8787/")) == (
         "EntitlerServer(base_url='http://localhost:8787', kind='server')"
     )
+
+
+UNSENDABLE = ["a b", "a\tb", "aéb", "a\x01b"]
+UNSENDABLE_IDS = ["space", "tab", "non-ascii", "control"]
+
+
+def exactly(message: str) -> str:
+    return f"^{re.escape(message)}$"
+
+
+@pytest.mark.parametrize("inside", UNSENDABLE, ids=UNSENDABLE_IDS)
+def test_a_credential_that_cannot_be_sent_fails_as_a_blank_one(inside: str) -> None:
+    with pytest.raises(
+        ValueError, match=exactly("Provide an Entitler API key from the dashboard.")
+    ):
+        EntitlerServer(f"ent_test_{inside}")
+    with pytest.raises(
+        ValueError, match=exactly("Provide an Entitler API key from the dashboard.")
+    ):
+        EntitlerClient(key=f"ent_pk_test_{inside}")
+    with pytest.raises(
+        ValueError, match=exactly("Provide a customer token minted by your server.")
+    ):
+        EntitlerClient(token=f"x.y.{inside}")
+    with pytest.raises(
+        ValueError, match=exactly("Provide the identity token your sign-in provider issued.")
+    ):
+        EntitlerClient(key="ent_pk_test_x", identity_token=f"x.y.{inside}")
+    with pytest.raises(
+        ValueError, match=exactly("Provide a customer token minted by your server.")
+    ):
+        AsyncEntitlerClient(token=f"x.y.{inside}")
+
+
+@pytest.mark.parametrize("inside", UNSENDABLE, ids=UNSENDABLE_IDS)
+def test_a_providers_token_that_cannot_be_sent_is_unreadable(inside: str) -> None:
+    transport = wired(Transport())
+    client = EntitlerClient(
+        token=lambda: token(NOW, 9_999_999_999, f"sig{inside}"), http_client=transport.client()
+    )
+    with pytest.raises(TokenError, match="not a readable JWT") as raised:
+        client.me.check("sso")
+    assert inside not in str(raised.value)
+    assert transport.requests == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("inside", UNSENDABLE, ids=UNSENDABLE_IDS)
+async def test_an_async_providers_token_that_cannot_be_sent_is_unreadable(inside: str) -> None:
+    transport = wired(Transport())
+
+    async def provider() -> str:
+        return token(NOW, 9_999_999_999, f"sig{inside}")
+
+    client = AsyncEntitlerClient(token=provider, http_client=transport.async_client())
+    with pytest.raises(TokenError, match="not a readable JWT"):
+        await client.me.check("sso")
+    assert transport.requests == []
+    await client.aclose()

@@ -8,7 +8,7 @@ from typing import Any, TypeAlias, cast
 
 from ._cache import AsyncCacheStore, CacheStore, MemoryCache
 from ._engine import Engine
-from ._values import require_text, seconds, timeout, trim, whole
+from ._values import require_credential, require_text, seconds, timeout, trim, whole
 from ._visitor import new_visitor_id, visitor_of
 
 OnError: TypeAlias = Callable[[Exception], None]
@@ -35,14 +35,14 @@ CUSTOM_STORE = "In-app clients keep answers in memory: pass a cache size, or tur
 
 def server_key(key: object) -> str:
     """Checks a server client's key: not blank, and not publishable."""
-    secret = require_text(key, BLANK_KEY)
+    secret = require_credential(key, BLANK_KEY)
     if secret.startswith("ent_pk_"):
         raise ValueError(PUBLISHABLE_KEY)
     return secret
 
 
 def _credential(value: object, blank: str) -> object:
-    return value if callable(value) else require_text(value, blank)
+    return value if callable(value) else require_credential(value, blank)
 
 
 def in_app_credentials(
@@ -57,7 +57,7 @@ def in_app_credentials(
     if token is not None:
         kind, publishable, given = "token", None, _credential(token, BLANK_CUSTOMER_CREDENTIAL)
     else:
-        publishable = require_text(key, BLANK_KEY)
+        publishable = require_credential(key, BLANK_KEY)
         given = None if identity_token is None else _credential(identity_token, BLANK_IDENTITY)
         if not publishable.startswith("ent_pk_"):
             raise ValueError(SERVER_KEY_IN_APP)

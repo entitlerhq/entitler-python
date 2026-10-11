@@ -40,6 +40,23 @@ def require_text(value: object, message: str) -> str:
     return trimmed
 
 
+def sendable(credential: str) -> bool:
+    """True when every character is printable ASCII other than a space (`!` to `~`)."""
+    return all("!" <= character <= "~" for character in credential)
+
+
+def require_credential(value: object, message: str) -> str:
+    """Answers a key or token trimmed, refusing one that is blank or holds any other character.
+
+    A credential travels in a header, and an HTTP library's error for a bad header value can
+    quote it, so one that could not be sent fails here exactly as a blank one does.
+    """
+    credential = require_text(value, message)
+    if not sendable(credential):
+        raise ValueError(message)
+    return credential
+
+
 def require_id(value: object, message: str) -> str:
     """Answers an id exactly as given, refusing one that is blank."""
     if not isinstance(value, str):

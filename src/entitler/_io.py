@@ -32,7 +32,7 @@ from ._engine import (
     closed_error,
 )
 from ._errors import EntitlerConnectionError, EntitlerTimeoutError, TokenError
-from ._values import trim
+from ._values import sendable, trim
 
 T = TypeVar("T")
 
@@ -110,7 +110,7 @@ class _TokenState:
         token = trim(answer) if isinstance(answer, str) else ""
         if not token:
             raise TokenError("The token provider answered a blank token.")
-        if not readable(token):
+        if not sendable(token) or not readable(token):
             raise TokenError("The token provider answered a token that is not a readable JWT.")
         self.current = token
         self.received_at = _clock.now()
