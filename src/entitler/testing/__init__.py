@@ -321,7 +321,7 @@ class _Api:
         if name == "release_usage":
             return self._release(args["holdId"]), False
         if name == "cancel_usage":
-            return self._cancel(args["usageId"]), False
+            return self._cancel(call), False
         if name == "adjust_meter":
             return self._adjust(call), False
         return self._plain(name, call), False
@@ -422,7 +422,8 @@ class _Api:
         hold.state, hold.settled = "settled", amount
         meter = self._meter(hold.feature)
         self.values[hold.feature] = Meter(meter.value, meter.used + amount)
-        self.log.append(answers.usage_event(id=hold.id, feature=hold.feature, amount=amount))
+        if amount > 0:
+            self.log.append(answers.usage_event(id=hold.id, feature=hold.feature, amount=amount))
         return self._hold_result(hold, "settled", meter_change=amount)
 
     def _release(self, hold_id: str) -> Json:
@@ -432,7 +433,8 @@ class _Api:
         hold.state = "released"
         return self._hold_result(hold, "released")
 
-    def _cancel(self, usage_id: str) -> Json:
+    def _cancel(self, call: FakeCall) -> Json:
+        usage_id = call.arguments["usageId"]
         report = self.reports.get(usage_id)
         if report is None:
             raise _Refused(404, "not_found", f"No usage report has the id {usage_id}.")
@@ -445,6 +447,8 @@ class _Api:
             for entry in self.log:
                 if entry["id"] == usage_id:
                     entry["cancelledAt"] = answers.instant()
+                    entry["actor"] = call.arguments.get("actor")
+                    entry["reason"] = call.arguments.get("reason")
         return self._result(
             report.feature,
             outcome="cancelled",
@@ -465,7 +469,13 @@ class _Api:
             usage_id = self._next_id("use")
             self.log.append(
                 answers.usage_event(
-                    id=usage_id, feature=feature, kind="adjust", amount=change, set_to=target
+                    id=usage_id,
+                    feature=feature,
+                    kind="adjust",
+                    amount=change,
+                    set_to=target,
+                    actor=args.get("actor"),
+                    reason=args.get("reason"),
                 )
             )
         return self._result(

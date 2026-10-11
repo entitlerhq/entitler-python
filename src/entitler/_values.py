@@ -20,7 +20,7 @@ USAGE_AMOUNT = f"Pass amount as a whole number from 1 to {MAX_SAFE}."
 REQUIRED_KEY = (
     "Pass idempotency_key: a key from your own unit of work, such as a message or job id."
 )
-TIMEOUT = "Pass timeout as a positive number of seconds."
+TIMEOUT = "Pass timeout as a number of seconds above 0."
 _KEY = re.compile(r"[\x21-\x7e](?:[\x20-\x7e]*[\x21-\x7e])?")
 _DOTS = re.compile(r"\.+")
 
@@ -104,8 +104,23 @@ def key_or_new(value: object) -> str:
     return str(uuid.uuid4()) if value is None else idempotency_key(value)
 
 
+class _ClientTimeout(float):
+    """The default of every call's `timeout`: the client's own timeout."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<the client's timeout>"
+
+
+CLIENT_TIMEOUT: float = _ClientTimeout("nan")
+"""A call's default `timeout`, standing for the client's: never a timeout of its own."""
+
+
 def timeout(value: object) -> float:
     """Checks a timeout: a finite number of seconds above 0."""
+    if value is None:
+        raise ValueError(TIMEOUT)
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise TypeError(TIMEOUT)
     if not math.isfinite(value) or value <= 0:

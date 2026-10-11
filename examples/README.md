@@ -5,7 +5,7 @@ Small programs that use the SDK. Each runs against your Entitler environment wit
 
 | Example | What it shows | Run |
 | --- | --- | --- |
-| [quickstart](quickstart/main.py) | A server registers a customer, checks a feature and records usage | `ENTITLER_KEY=… python examples/quickstart/main.py` |
+| [quickstart](quickstart/main.py) | A server registers a customer (`ENTITLER_CUSTOMER_ID`, or a new one it erases), checks a feature and records usage | `ENTITLER_KEY=… python examples/quickstart/main.py` |
 | [pricing-page](pricing-page/main.py) | A signed-out pricing page, through `EntitlerClient(key=…)` and the server with a visitor id | `ENTITLER_KEY=… ENTITLER_PUBLISHABLE_KEY=… python examples/pricing-page/main.py` |
 | [in-app](in-app/main.py) | A customer token minted for the signed-in customer, used by an in-app client closed at sign-out | `ENTITLER_KEY=… python examples/in-app/main.py` |
 | [metered-work](metered-work/main.py) | `start_hold` around streamed work, `with_hold` around a job, and an observe-mode report | `ENTITLER_KEY=… python examples/metered-work/main.py` |

@@ -317,6 +317,38 @@ def test_the_fake_settles_and_releases_holds_as_the_api_does() -> None:
     assert [w.method for w in customer.writes][:2] == ["hold_usage", "hold_usage"]
 
 
+def test_the_fake_checks_a_holds_state_before_its_amount() -> None:
+    customer = fake_customer({"ai_credits": metered(value=100)})
+    hold = customer.start_hold(CREDITS, 10, idempotency_key="h1")
+    customer.settle_usage(hold.id, 4)
+    with pytest.raises(APIError) as settled:
+        customer.settle_usage(hold.id, 50)
+    assert settled.value.code == "hold_settled"
+    released = customer.start_hold(CREDITS, 10, idempotency_key="h2")
+    customer.release_usage(released.id)
+    with pytest.raises(APIError) as gone:
+        customer.settle_usage(released.id, 50)
+    assert gone.value.code == "hold_released"
+
+
+def test_the_fake_keeps_the_usage_log_as_the_api_does() -> None:
+    customer = fake_customer({"ai_credits": metered(value=100)})
+    report = customer.record_usage(CREDITS, 3, idempotency_key="r1")
+    nothing = customer.start_hold(CREDITS, 10, idempotency_key="h1")
+    customer.settle_usage(nothing.id, 0)
+    freed = customer.start_hold(CREDITS, 10, idempotency_key="h2")
+    customer.release_usage(freed.id)
+    used = customer.start_hold(CREDITS, 10, idempotency_key="h3")
+    customer.settle_usage(used.id, 6)
+    customer.adjust_meter(CREDITS, by=-2, idempotency_key="a1", actor="agent_7", reason="Refund")
+    customer.cancel_usage(report.id or "", actor="agent_7", reason="Duplicate charge")
+    log = customer.usage().log.items
+    assert [(entry.kind, entry.amount) for entry in log] == [("use", 3), ("use", 6), ("adjust", -2)]
+    assert (log[0].actor, log[0].reason) == ("agent_7", "Duplicate charge")
+    assert log[0].cancelled_at is not None
+    assert (log[2].actor, log[2].reason) == ("agent_7", "Refund")
+
+
 def test_the_fake_expires_holds(monkeypatch: pytest.MonkeyPatch) -> None:
     from entitler import _clock
 

@@ -45,6 +45,7 @@ from ._models import (
 )
 from ._ops import CustomerOps, HoldState, ServerOps
 from ._pages import UsageLog
+from ._values import CLIENT_TIMEOUT
 
 
 class Hold:
@@ -185,26 +186,42 @@ class Customer:
 
     @overload
     def check(
-        self, feature: Feature[Metered], *, revalidate: bool = False, timeout: float | None = None
+        self,
+        feature: Feature[Metered],
+        *,
+        revalidate: bool = False,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> MeteredCheck: ...
     @overload
     def check(
-        self, feature: Feature[Boolean], *, revalidate: bool = False, timeout: float | None = None
+        self,
+        feature: Feature[Boolean],
+        *,
+        revalidate: bool = False,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> BooleanCheck: ...
     @overload
     def check(
-        self, feature: Feature[Config], *, revalidate: bool = False, timeout: float | None = None
+        self, feature: Feature[Config], *, revalidate: bool = False, timeout: float = CLIENT_TIMEOUT
     ) -> ConfigCheck: ...
     @overload
     def check(
-        self, feature: Feature[Group], *, revalidate: bool = False, timeout: float | None = None
+        self, feature: Feature[Group], *, revalidate: bool = False, timeout: float = CLIENT_TIMEOUT
     ) -> GroupCheck: ...
     @overload
     def check(
-        self, feature: Feature[Any] | str, *, revalidate: bool = False, timeout: float | None = None
+        self,
+        feature: Feature[Any] | str,
+        *,
+        revalidate: bool = False,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> Check: ...
     def check(
-        self, feature: Feature[Any] | str, *, revalidate: bool = False, timeout: float | None = None
+        self,
+        feature: Feature[Any] | str,
+        *,
+        revalidate: bool = False,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> Check:
         """Checks one feature, through the answer cache.
 
@@ -225,7 +242,7 @@ class Customer:
         *,
         default: bool,
         revalidate: bool = False,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> bool:
         """Answers whether the customer is entitled, and never fails because of Entitler.
 
@@ -239,12 +256,12 @@ class Customer:
         return self._driver.run(self._ops.is_entitled(feature, default, revalidate, timeout))
 
     def entitlements(
-        self, *, revalidate: bool = False, timeout: float | None = None
+        self, *, revalidate: bool = False, timeout: float = CLIENT_TIMEOUT
     ) -> Entitlements[Environment]:
         """The customer's entitlements, groups included, through the answer cache."""
         return self._driver.run(self._ops.entitlements(revalidate, timeout))
 
-    def plans(self, *, revalidate: bool = False, timeout: float | None = None) -> CustomerPlans:
+    def plans(self, *, revalidate: bool = False, timeout: float = CLIENT_TIMEOUT) -> CustomerPlans:
         """The paywall's and the billing page's one read, through the answer cache.
 
         `held` holds the plans held: a store's `billed_by` sends the customer to the store's own
@@ -255,19 +272,23 @@ class Customer:
         return self._driver.run(self._ops.plans(revalidate, timeout))
 
     def pricing(
-        self, *, visitor: str | None = None, revalidate: bool = False, timeout: float | None = None
+        self,
+        *,
+        visitor: str | None = None,
+        revalidate: bool = False,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> Pricing:
         """The pricing on sale to the customer, through the answer cache."""
         return self._driver.run(self._ops.pricing(visitor, revalidate, timeout))
 
     def usage(
-        self, *, cursor: str | None = None, timeout: float | None = None
+        self, *, cursor: str | None = None, timeout: float = CLIENT_TIMEOUT
     ) -> CustomerUsage[UsageLog]:
         """The customer's meters and usage log, from the page `cursor` names when given."""
         return self._driver.run(self._ops.usage(cursor, timeout, self._log(timeout, None)))
 
     def _log(
-        self, timeout: float | None, as_of: datetime | None
+        self, timeout: float, as_of: datetime | None
     ) -> Callable[[Page[UsageEvent]], UsageLog]:
         return lambda first: UsageLog(
             first, lambda cursor: self._driver.run(self._ops.usage_page(cursor, timeout, as_of))
@@ -282,7 +303,7 @@ class Customer:
         mode: UsageMode | None = None,
         occurred_at: datetime | None = None,
         register: bool | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> UsageResult:
         """Records usage of a metered feature: a whole number from 1 in the feature's unit.
 
@@ -313,7 +334,7 @@ class Customer:
         *,
         idempotency_key: str,
         ttl_seconds: int | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> Hold:
         """Holds `amount` before any work starts, and answers the open `Hold`.
 
@@ -336,7 +357,7 @@ class Customer:
         *,
         idempotency_key: str,
         ttl_seconds: int | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> AbstractContextManager[Hold]:
         """Holds `amount` around a block of work, and finishes the hold when the block ends.
 
@@ -361,7 +382,7 @@ class Customer:
         amount: int,
         key: str,
         ttl_seconds: int | None,
-        timeout: float | None,
+        timeout: float,
     ) -> Generator[Hold]:
         hold = self.start_hold(
             feature, amount, idempotency_key=key, ttl_seconds=ttl_seconds, timeout=timeout
@@ -380,7 +401,7 @@ class Customer:
         *,
         idempotency_key: str,
         ttl_seconds: int | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> UsageResult:
         """Holds an amount and answers the hold's `UsageResult`, for a hold settled elsewhere."""
         return self._driver.run(
@@ -393,19 +414,19 @@ class Customer:
         amount: int,
         *,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> UsageResult:
         """Settles a hold with the real amount, from 0 to the amount held."""
         return self._driver.run(self._ops.settle_usage(hold_id, amount, idempotency_key, timeout))
 
     def release_usage(
-        self, hold_id: str, *, idempotency_key: str | None = None, timeout: float | None = None
+        self, hold_id: str, *, idempotency_key: str | None = None, timeout: float = CLIENT_TIMEOUT
     ) -> UsageResult:
         """Releases a hold, recording nothing. Releasing twice is safe."""
         return self._driver.run(self._ops.release_usage(hold_id, idempotency_key, timeout))
 
     def snapshot(
-        self, *, ttl_seconds: int | None = None, timeout: float | None = None
+        self, *, ttl_seconds: int | None = None, timeout: float = CLIENT_TIMEOUT
     ) -> IssuedSnapshot:
         """Signs the customer's entitlements for offline use; check it with `verify_snapshot`."""
         return self._driver.run(self._ops.snapshot(ttl_seconds, timeout))
@@ -419,7 +440,7 @@ class Customer:
         return_url: str | None = None,
         register: bool | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> SubscribeStep:
         """Moves the customer to a plan, or adds an add-on, as their own choice.
 
@@ -450,7 +471,7 @@ class Customer:
         add_on: str | None = None,
         product: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> PlanChange:
         """Cancels the plan, or the add-on `add_on` names, as the customer's own choice.
 
@@ -465,7 +486,7 @@ class Customer:
         add_on: str | None = None,
         product: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> PlanChange:
         """Undoes the change booked for renewal on the plan, or on the add-on `add_on` names.
 
@@ -476,7 +497,7 @@ class Customer:
             self._ops.target("/pending", add_on, product, idempotency_key, timeout)
         )
 
-    def billing_portal(self, *, return_url: str, timeout: float | None = None) -> BillingPortal:
+    def billing_portal(self, *, return_url: str, timeout: float = CLIENT_TIMEOUT) -> BillingPortal:
         """Opens the provider's page for payment details and invoices. It changes no plan.
 
         A customer the provider has never billed answers `404 not_found`, and an environment with
@@ -484,7 +505,7 @@ class Customer:
         """
         return self._driver.run(self._ops.billing_portal(return_url, timeout))
 
-    def sync_billing(self, *, timeout: float | None = None) -> BillingSync:
+    def sync_billing(self, *, timeout: float = CLIENT_TIMEOUT) -> BillingSync:
         """Reads the customer's state from the provider now, for the page they return to.
 
         Call it before `plans(revalidate=True)`, so the customer sees the plan they paid for.
@@ -520,7 +541,7 @@ class ServerCustomer(Customer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> MeteredCheck: ...
     @overload
     def check(
@@ -529,7 +550,7 @@ class ServerCustomer(Customer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> BooleanCheck: ...
     @overload
     def check(
@@ -538,7 +559,7 @@ class ServerCustomer(Customer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> ConfigCheck: ...
     @overload
     def check(
@@ -547,7 +568,7 @@ class ServerCustomer(Customer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> GroupCheck: ...
     @overload
     def check(
@@ -556,7 +577,7 @@ class ServerCustomer(Customer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> Check: ...
     def check(
         self,
@@ -564,7 +585,7 @@ class ServerCustomer(Customer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> Check:
         """Checks one feature, through the answer cache, at `as_of` when given."""
         return self._driver.run(self._ops.check(feature, revalidate, timeout, as_of))
@@ -576,7 +597,7 @@ class ServerCustomer(Customer):
         default: bool,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> bool:
         """As `Customer.is_entitled`, at `as_of` when given."""
         return self._driver.run(self._ops.is_entitled(feature, default, revalidate, timeout, as_of))
@@ -586,7 +607,7 @@ class ServerCustomer(Customer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> Entitlements[Environment]:
         """As `Customer.entitlements`, at `as_of` when given."""
         return self._driver.run(self._ops.entitlements(revalidate, timeout, as_of))
@@ -596,7 +617,7 @@ class ServerCustomer(Customer):
         *,
         revalidate: bool = False,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> CustomerPlans:
         """As `Customer.plans`, at `as_of` when given."""
         return self._driver.run(self._ops.plans(revalidate, timeout, as_of))
@@ -606,7 +627,7 @@ class ServerCustomer(Customer):
         *,
         cursor: str | None = None,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> CustomerUsage[UsageLog]:
         """As `Customer.usage`, at `as_of` when given."""
         return self._driver.run(self._ops.usage(cursor, timeout, self._log(timeout, as_of), as_of))
@@ -619,7 +640,7 @@ class ServerCustomer(Customer):
         metadata: Mapping[str, str | None] | None = None,
         visitor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> RegisteredCustomer:
         """Registers the customer, or keeps their details current.
 
@@ -636,7 +657,7 @@ class ServerCustomer(Customer):
         *,
         cursor: str | None = None,
         as_of: datetime | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> CustomerDetail[UsageLog]:
         """The customer's plans, add-ons, grants, entitlements and usage log."""
 
@@ -655,12 +676,12 @@ class ServerCustomer(Customer):
         email: str | None = None,
         metadata: Mapping[str, str | None] | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> CustomerSummary:
         """Changes the customer's details; a `None` metadata value removes that key."""
         return self._driver.run(self._ops.update(name, email, metadata, idempotency_key, timeout))
 
-    def erase(self, *, idempotency_key: str | None = None, timeout: float | None = None) -> None:
+    def erase(self, *, idempotency_key: str | None = None, timeout: float = CLIENT_TIMEOUT) -> None:
         """Erases the customer, as app stores require for account deletion.
 
         It ends any Stripe subscription now, then erases their details, usage and events.
@@ -674,7 +695,7 @@ class ServerCustomer(Customer):
         *,
         scopes: Sequence[CustomerTokenScope] | None = None,
         ttl_seconds: int | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> IssuedCustomerToken:
         """Mints a customer token for an in-app client.
 
@@ -689,7 +710,7 @@ class ServerCustomer(Customer):
         track: str | None,
         *,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> CustomerTrack:
         """Puts the customer on a track by its name, or with `None` back on All customers.
 
@@ -698,7 +719,7 @@ class ServerCustomer(Customer):
         """
         return self._driver.run(self._ops.set_track(track, idempotency_key, timeout))
 
-    def billing(self, *, timeout: float | None = None) -> CustomerBilling:
+    def billing(self, *, timeout: float = CLIENT_TIMEOUT) -> CustomerBilling:
         """The payment provider's view, for support tools. Billing pages read `plans()`."""
         return self._driver.run(self._ops.billing(timeout))
 
@@ -716,7 +737,7 @@ class ServerCustomer(Customer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> PlanChange: ...
     @overload
     def set_plan(
@@ -730,7 +751,7 @@ class ServerCustomer(Customer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> PlanChange: ...
     @overload
     def set_plan(
@@ -744,7 +765,7 @@ class ServerCustomer(Customer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> PlanChange: ...
     def set_plan(
         self,
@@ -760,7 +781,7 @@ class ServerCustomer(Customer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> PlanChange:
         """Moves the customer to any plan as the company's decision, under no self-serve rules.
 
@@ -814,7 +835,7 @@ class ServerCustomer(Customer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> PlanChange:
         """Adds an add-on, sets its quantity, or removes it at `0`, taking effect now.
 
@@ -837,7 +858,7 @@ class ServerCustomer(Customer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> GrantChange:
         """Grants a feature for `days` (0 or none for good), answering the grant so you keep its id.
 
@@ -854,7 +875,7 @@ class ServerCustomer(Customer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> GrantChange:
         """Revokes a grant, and answers it."""
         return self._driver.run(
@@ -870,7 +891,7 @@ class ServerCustomer(Customer):
         to: int | None = None,
         reason: str | None = None,
         actor: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> UsageResult:
         """Moves a meter `by` an amount other than 0, or sets it `to` an amount; never below 0.
 
@@ -888,7 +909,7 @@ class ServerCustomer(Customer):
         reason: str | None = None,
         actor: str | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> UsageResult:
         """Cancels a usage report, a correction answered with outcome `cancelled`."""
         return self._driver.run(

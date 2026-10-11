@@ -5,8 +5,10 @@ The clients are built so that Entitler being slow or down never takes your app d
 ## Timeouts
 
 Each attempt has a deadline: the client's `timeout` (10 seconds by default), overridable per call
-with `timeout=`. Timeouts are float seconds, finite and above 0; anything else raises
-`ValueError` before a request or a token provider runs.
+with `timeout=`. Timeouts are float seconds, finite and above 0: `None`, `inf`, `nan`, 0 and
+negatives raise `ValueError` (`Pass timeout as a number of seconds above 0.`) before a request or a
+token provider runs. Leave a call's `timeout` out to use the client's. Every wait and timeout is
+clamped to what `time.sleep`, anyio and httpx can represent.
 
 - The blocking client hands the deadline to httpx, which applies it to each phase of the attempt
   (connecting, writing, each read), so a very slow trickle of bytes can take longer in total.
@@ -26,7 +28,8 @@ retried write never applies twice. Nothing else is retried.
   `min(8, 0.5 × 2^n)` seconds before retry `n`.
 - A `Retry-After` answer header is honoured. When it asks for longer than `max_retry_delay` (10
   seconds by default), the client fails at once with that answer's `APIError`, whose `retry_after`
-  says when to try again.
+  (float seconds) says when to try again; a value too large to represent saturates at
+  `sys.float_info.max`.
 - After a `401`, an in-app client with a token provider refreshes the token and retries once, on
   top of the budget.
 

@@ -430,6 +430,8 @@ def test_options_are_checked() -> None:
         EntitlerServer(KEY, max_retry_delay=float("nan"))
     with pytest.raises(ValueError, match="Pass timeout"):
         EntitlerServer(KEY, timeout=float("inf"))
+    with pytest.raises(ValueError, match=r"Pass timeout as a number of seconds above 0\."):
+        EntitlerServer(KEY, timeout=None)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="Pass on_error"):
         EntitlerServer(KEY, on_error="print")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="Pass cache"):

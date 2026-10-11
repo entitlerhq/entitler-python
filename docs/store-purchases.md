@@ -12,7 +12,10 @@ A store SKU never touches Stripe; when Stripe already bills that product, Entitl
 
 1. The app reads `plans()`. Each `MoveOption` lists `skus`: the `connector` (`apple`, `google`),
    the store's `ids` and the `period`.
-2. The app buys through the store and sends the transaction to your server.
+2. The app buys through the store with an account token your server issued for the signed-in
+   customer (StoreKit's `appAccountToken`, a UUID; Play Billing's `obfuscatedAccountId`), and sends
+   the transaction to your server's purchase route, which takes the customer from its own
+   signed-in session.
 3. Your server verifies the transaction with the store (the App Store Server API, or the Google
    Play Developer API), never trusting the app's word.
 4. Your server records it with the transaction's expiry as `until`, keyed by the transaction:
@@ -38,6 +41,12 @@ A SKU names its own period, so `set_plan` takes no `period=` with one. For Googl
 connector is `google`, with the ids the `skus` entry lists.
 
 ## Renewals, expiry and refunds
+
+Store notifications act for a customer who is not making the request, so take the customer from
+the notification itself, and only after checking its signature: the App Store's signed payload
+carries the purchase's `appAccountToken`, and Google's verified purchase its `obfuscatedAccountId`,
+which your server maps back to the customer it issued them for. Never take the id from anything
+unsigned.
 
 - **Renewals**: each store renewal notification (App Store Server Notifications `DID_RENEW`, Google
   Real-time developer notifications `SUBSCRIPTION_RENEWED`) carries a new transaction and expiry.

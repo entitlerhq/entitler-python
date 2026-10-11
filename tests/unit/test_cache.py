@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from datetime import UTC, datetime
@@ -377,6 +378,29 @@ def test_a_huge_retry_after_never_outlasts_stale_for(transport: Transport, clock
     clock.now += 121
     transport.answers = [{"status": 304}]
     client.customer("u").check("export_pdf")
+
+
+def test_a_retry_after_too_long_to_parse_saturates_and_fails_at_once(
+    transport: Transport, clock: Clock
+) -> None:
+    client = server(transport, max_retries=2)
+    transport.answers = [{"status": 503, "headers": {"Retry-After": "7" * 5000}}]
+    with pytest.raises(APIError) as raised:
+        client.customer("u").check("export_pdf")
+    assert raised.value.retry_after == sys.float_info.max
+    assert len(transport.requests) == 1
+    assert client._driver.engine._down_until <= clock.now + client._driver.engine.stale_for
+
+
+def test_a_successful_write_ends_the_window(transport: Transport, clock: Clock) -> None:
+    client = server(transport)
+    transport.answers = [ok(CHECK, **METER), {"status": 503}]
+    client.customer("u").check("export_pdf")
+    client.customer("u").check("export_pdf")
+    assert client._driver.engine._down_until > 0
+    transport.answers = [ok(answers.usage_result())]
+    client.customer("u").record_usage(Feature.metered("ai_credits"), 1, idempotency_key="k")
+    assert client._driver.engine._down_until == 0
 
 
 def test_a_success_ends_the_window(transport: Transport, clock: Clock) -> None:

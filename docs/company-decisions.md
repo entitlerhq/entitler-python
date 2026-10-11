@@ -4,6 +4,11 @@
 store purchase. They follow no self-serve rules, so sales-led plans are open to them, and they need
 `customers:write`.
 
+These act for a customer who is not making the request, so take the customer's id from a verified
+source: a staff tool behind its own authorisation, a CRM or payment provider's webhook after its
+signature is checked, or a script's configuration. Never take it from a request a customer can
+send.
+
 Each takes `actor=` (1 to 200 characters naming the person or system that decided, such as a
 support agent's id or `hubspot`) and `reason=` (up to 200 characters), which the customer's
 activity shows beside the key's name.

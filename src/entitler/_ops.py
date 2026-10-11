@@ -58,6 +58,7 @@ from ._models import (
     UsageResult,
 )
 from ._values import (
+    CLIENT_TIMEOUT,
     CUSTOMER_ID,
     FEATURE_KEY,
     MAX_SAFE,
@@ -93,9 +94,9 @@ def feature_key(feature: object) -> str:
     return require_id(feature.key if isinstance(feature, Feature) else feature, FEATURE_KEY)
 
 
-def call_timeout(value: float | None) -> float | None:
-    """Checks a per-call timeout."""
-    return None if value is None else timeout(value)
+def call_timeout(value: float) -> float | None:
+    """Checks a per-call timeout, answering `None` for the client's own."""
+    return None if value is CLIENT_TIMEOUT else timeout(value)
 
 
 def as_of_header(value: datetime | None) -> dict[str, str | None]:
@@ -155,7 +156,7 @@ class CustomerOps:
         decode: Callable[[Obj, bool], T],
         *,
         revalidate: bool,
-        call_seconds: float | None,
+        call_seconds: float,
         headers: Mapping[str, str | None] | None = None,
     ) -> Gen[T]:
         """A read through the cache."""
@@ -178,7 +179,7 @@ class CustomerOps:
         decode: Callable[[Obj, bool], T],
         *,
         key: str,
-        call_seconds: float | None,
+        call_seconds: float,
         body: object = ABSENT,
         query: Mapping[str, str | None] | None = None,
         headers: Mapping[str, str | None] | None = None,
@@ -203,7 +204,7 @@ class CustomerOps:
         self,
         feature: object,
         revalidate: bool,
-        seconds: float | None,
+        seconds: float,
         as_of: datetime | None = None,
     ) -> Gen[Check]:
         """`GET /customers/{id}/entitlements/{feature}`."""
@@ -218,7 +219,7 @@ class CustomerOps:
         feature: object,
         default: bool,
         revalidate: bool,
-        seconds: float | None,
+        seconds: float,
         as_of: datetime | None = None,
     ) -> Gen[bool]:
         """`check`'s decision, or `default` when the check fails."""
@@ -237,7 +238,7 @@ class CustomerOps:
         return found.entitled
 
     def entitlements(
-        self, revalidate: bool, seconds: float | None, as_of: datetime | None = None
+        self, revalidate: bool, seconds: float, as_of: datetime | None = None
     ) -> Gen[Entitlements[Environment]]:
         """`GET /customers/{id}/entitlements`."""
         headers = as_of_header(as_of)
@@ -250,7 +251,7 @@ class CustomerOps:
         )
 
     def plans(
-        self, revalidate: bool, seconds: float | None, as_of: datetime | None = None
+        self, revalidate: bool, seconds: float, as_of: datetime | None = None
     ) -> Gen[CustomerPlans]:
         """`GET /customers/{id}/plans`."""
         headers = as_of_header(as_of)
@@ -258,7 +259,7 @@ class CustomerOps:
             "/plans", d.customer_plans, revalidate=revalidate, call_seconds=seconds, headers=headers
         )
 
-    def pricing(self, visitor: str | None, revalidate: bool, seconds: float | None) -> Gen[Pricing]:
+    def pricing(self, visitor: str | None, revalidate: bool, seconds: float) -> Gen[Pricing]:
         """`GET /customers/{id}/pricing`."""
         headers = {"Entitler-Visitor": visitor_of(visitor)}
         return self.read(
@@ -268,7 +269,7 @@ class CustomerOps:
     def usage(
         self,
         cursor: str | None,
-        seconds: float | None,
+        seconds: float,
         log: Callable[[Page[UsageEvent]], L],
         as_of: datetime | None = None,
     ) -> Gen[CustomerUsage[L]]:
@@ -285,7 +286,7 @@ class CustomerOps:
         )
 
     def usage_page(
-        self, cursor: str, seconds: float | None, as_of: datetime | None = None
+        self, cursor: str, seconds: float, as_of: datetime | None = None
     ) -> Gen[Page[UsageEvent]]:
         """A later page of the usage log."""
         answer = yield from self.usage(cursor, seconds, lambda page: page, as_of)
@@ -299,7 +300,7 @@ class CustomerOps:
         mode: UsageMode | str | None,
         occurred_at: datetime | None,
         register: bool | None,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[UsageResult]:
         """`POST /customers/{id}/usage`."""
         checked = required_key(key)
@@ -324,7 +325,7 @@ class CustomerOps:
         amount: object,
         key: object,
         ttl_seconds: int | None,
-        seconds: float | None,
+        seconds: float,
         longest: int = 200,
     ) -> Gen[UsageResult]:
         """`POST /customers/{id}/usage/holds`."""
@@ -344,7 +345,7 @@ class CustomerOps:
         amount: object,
         key: object,
         ttl_seconds: int | None,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[UsageResult]:
         """A hold that is open, else the refusal or replay it raises."""
         result = yield from self.hold_usage(feature, amount, key, ttl_seconds, seconds, 193)
@@ -355,7 +356,7 @@ class CustomerOps:
         return result
 
     def settle_usage(
-        self, hold_id: object, amount: object, key: object, seconds: float | None
+        self, hold_id: object, amount: object, key: object, seconds: float
     ) -> Gen[UsageResult]:
         """`POST /customers/{id}/usage/holds/{holdId}/settle`."""
         path = f"/usage/holds/{id_segment(hold_id, 'Provide the id of the hold.')}/settle"
@@ -364,14 +365,12 @@ class CustomerOps:
             "POST", path, d.usage_result, key=key_or_new(key), call_seconds=seconds, body=body
         )
 
-    def release_usage(
-        self, hold_id: object, key: object, seconds: float | None
-    ) -> Gen[UsageResult]:
+    def release_usage(self, hold_id: object, key: object, seconds: float) -> Gen[UsageResult]:
         """`DELETE /customers/{id}/usage/holds/{holdId}`."""
         path = f"/usage/holds/{id_segment(hold_id, 'Provide the id of the hold.')}"
         return self.write("DELETE", path, d.usage_result, key=key_or_new(key), call_seconds=seconds)
 
-    def snapshot(self, ttl_seconds: int | None, seconds: float | None) -> Gen[IssuedSnapshot]:
+    def snapshot(self, ttl_seconds: int | None, seconds: float) -> Gen[IssuedSnapshot]:
         """`POST /customers/{id}/snapshots`."""
         return self.write(
             "POST",
@@ -391,7 +390,7 @@ class CustomerOps:
         return_url: str | None,
         register: bool | None,
         key: object,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[SubscribeStep]:
         """`POST /customers/{id}/subscription`."""
         body = {
@@ -420,7 +419,7 @@ class CustomerOps:
         add_on: str | None,
         product: str | None,
         key: object,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[PlanChange]:
         """`cancel` and `undo_pending_change`: on the plan, or the add-on `add_on` names."""
         if add_on is not None and product is not None:
@@ -439,7 +438,7 @@ class CustomerOps:
             query=query,
         )
 
-    def billing_portal(self, return_url: object, seconds: float | None) -> Gen[BillingPortal]:
+    def billing_portal(self, return_url: object, seconds: float) -> Gen[BillingPortal]:
         """`POST /customers/{id}/billing-portal`."""
         url = require_text(return_url, "Pass return_url as the page to send the customer back to.")
         return self.write(
@@ -452,7 +451,7 @@ class CustomerOps:
             changes=False,
         )
 
-    def sync_billing(self, seconds: float | None) -> Gen[BillingSync]:
+    def sync_billing(self, seconds: float) -> Gen[BillingSync]:
         """`POST /customers/{id}/billing/sync`."""
         return self.write(
             "POST",
@@ -462,16 +461,16 @@ class CustomerOps:
             call_seconds=seconds,
         )
 
-    def register_me(self, key: object, seconds: float | None) -> Gen[RegisteredCustomer]:
+    def register_me(self, key: object, seconds: float) -> Gen[RegisteredCustomer]:
         """`PUT /customers/me`, with no body."""
         return self.write("PUT", "", d.registered, key=key_or_new(key), call_seconds=seconds)
 
-    def scopes(self, seconds: float | None, identity: bool) -> Gen[Scopes]:
+    def scopes(self, seconds: float, identity: bool) -> Gen[Scopes]:
         """`GET /keys/self`."""
         return scopes(self.engine, seconds, identity)
 
 
-def scopes(engine: Engine, seconds: float | None, identity: bool) -> Gen[Scopes]:
+def scopes(engine: Engine, seconds: float, identity: bool) -> Gen[Scopes]:
     """`GET /keys/self`, kept to the scopes the SDK knows."""
     held, registration = yield from _data(
         engine,
@@ -480,9 +479,7 @@ def scopes(engine: Engine, seconds: float | None, identity: bool) -> Gen[Scopes]
     return Scopes(scopes=known_scopes(held), registration=registration if identity else None)
 
 
-def snapshot_keys(
-    engine: Engine, seconds: float | None
-) -> Gen[tuple[SnapshotKeys, dict[str, object]]]:
+def snapshot_keys(engine: Engine, seconds: float) -> Gen[tuple[SnapshotKeys, dict[str, object]]]:
     """`GET /customers/snapshot-keys`, with no credential, answering the keys and the raw body."""
     keys = yield from _data(
         engine,
@@ -497,9 +494,7 @@ def snapshot_keys(
     return keys
 
 
-def pricing(
-    engine: Engine, visitor: str | None, revalidate: bool, seconds: float | None
-) -> Gen[Pricing]:
+def pricing(engine: Engine, visitor: str | None, revalidate: bool, seconds: float) -> Gen[Pricing]:
     """`GET /pricing`, through the cache."""
     return _data(
         engine,
@@ -515,7 +510,7 @@ def pricing(
     )
 
 
-def features(engine: Engine, revalidate: bool, seconds: float | None) -> Gen[FeatureList]:
+def features(engine: Engine, revalidate: bool, seconds: float) -> Gen[FeatureList]:
     """`GET /pricing/features`, through the cache."""
     return _data(
         engine,
@@ -545,7 +540,7 @@ class ServerOps(CustomerOps):
         metadata: Mapping[str, str | None] | None,
         visitor: str | None,
         key: object,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[RegisteredCustomer]:
         """`PUT /customers/{id}`."""
         details = compact(
@@ -564,7 +559,7 @@ class ServerOps(CustomerOps):
     def details(
         self,
         cursor: str | None,
-        seconds: float | None,
+        seconds: float,
         log: Callable[[Page[UsageEvent]], L],
         as_of: datetime | None,
     ) -> Gen[CustomerDetail[L]]:
@@ -581,7 +576,7 @@ class ServerOps(CustomerOps):
         )
 
     def details_page(
-        self, cursor: str, seconds: float | None, as_of: datetime | None
+        self, cursor: str, seconds: float, as_of: datetime | None
     ) -> Gen[Page[UsageEvent]]:
         """A later page of the usage log `details` holds."""
         answer = yield from self.details(cursor, seconds, lambda page: page, as_of)
@@ -593,7 +588,7 @@ class ServerOps(CustomerOps):
         email: str | None,
         metadata: Mapping[str, str | None] | None,
         key: object,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[CustomerSummary]:
         """`PATCH /customers/{id}`."""
         body = compact(
@@ -603,7 +598,7 @@ class ServerOps(CustomerOps):
             "PATCH", "", d.customer_summary, key=key_or_new(key), call_seconds=seconds, body=body
         )
 
-    def erase(self, key: object, seconds: float | None) -> Gen[None]:
+    def erase(self, key: object, seconds: float) -> Gen[None]:
         """`DELETE /customers/{id}?erase=true`."""
         return self.send(
             Call(
@@ -619,7 +614,7 @@ class ServerOps(CustomerOps):
         )
 
     def token(
-        self, scopes: Sequence[str] | None, ttl_seconds: int | None, seconds: float | None
+        self, scopes: Sequence[str] | None, ttl_seconds: int | None, seconds: float
     ) -> Gen[IssuedCustomerToken]:
         """`POST /customers/{id}/tokens`."""
         body = compact(
@@ -636,9 +631,7 @@ class ServerOps(CustomerOps):
             changes=False,
         )
 
-    def set_track(
-        self, track: str | None, key: object, seconds: float | None
-    ) -> Gen[CustomerTrack]:
+    def set_track(self, track: str | None, key: object, seconds: float) -> Gen[CustomerTrack]:
         """`PUT /customers/{id}/track`."""
         body = {
             "track": None if track is None else require_text(track, "Name the track by its name.")
@@ -647,7 +640,7 @@ class ServerOps(CustomerOps):
             "PUT", "/track", d.customer_track, key=key_or_new(key), call_seconds=seconds, body=body
         )
 
-    def billing(self, seconds: float | None) -> Gen[CustomerBilling]:
+    def billing(self, seconds: float) -> Gen[CustomerBilling]:
         """`GET /customers/{id}/billing`."""
         return self.send(
             Call("GET", "/billing", with_flag(d.customer_billing), timeout=call_timeout(seconds))
@@ -658,7 +651,7 @@ class ServerOps(CustomerOps):
         plan: str | Sku | None,
         options: dict[str, Any],
         key: object,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[PlanChange]:
         """`PUT /customers/{id}/plan`."""
         product = options.get("product")
@@ -707,7 +700,7 @@ class ServerOps(CustomerOps):
         reason: str | None,
         actor: str | None,
         key: object,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[PlanChange]:
         """`PUT /customers/{id}/add-ons/{addOn}`."""
         path = f"/add-ons/{id_segment(add_on, PLAN_KEY)}"
@@ -734,7 +727,7 @@ class ServerOps(CustomerOps):
         reason: str | None,
         actor: str | None,
         key: object,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[GrantChange]:
         """`POST /customers/{id}/grants`."""
         if value is not None and value != "unlimited":
@@ -765,7 +758,7 @@ class ServerOps(CustomerOps):
         reason: str | None,
         actor: str | None,
         key: object,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[GrantChange]:
         """`DELETE /customers/{id}/grants/{grantId}`."""
         path = f"/grants/{id_segment(grant_id, 'Provide the id of the grant.')}"
@@ -787,7 +780,7 @@ class ServerOps(CustomerOps):
         reason: str | None,
         actor: str | None,
         key: object,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[UsageResult]:
         """`POST /customers/{id}/meters/{feature}/adjustments`."""
         checked = required_key(key)
@@ -812,7 +805,7 @@ class ServerOps(CustomerOps):
         reason: str | None,
         actor: str | None,
         key: object,
-        seconds: float | None,
+        seconds: float,
     ) -> Gen[UsageResult]:
         """`DELETE /customers/{id}/usage/{usageId}`."""
         path = f"/usage/{id_segment(usage_id, 'Provide the id of the usage report.')}"
@@ -852,7 +845,7 @@ class HoldState:
         feature: object,
         key: str,
         result: UsageResult,
-        seconds: float | None,
+        seconds: float,
     ) -> None:
         self.ops = ops
         self.feature = feature
@@ -868,6 +861,11 @@ class HoldState:
     def hold_id(self) -> str:
         """The hold's id."""
         return self.result.hold_id or ""
+
+    @property
+    def deadline(self) -> float:
+        """The seconds the hold's settle or release may take: the call's, else the client's."""
+        return self.ops.engine.timeout if self.seconds is CLIENT_TIMEOUT else self.seconds
 
     def use(self, amount: object) -> None:
         """Reports the total used so far."""
@@ -909,7 +907,7 @@ class HoldState:
 
     def timed_out(self) -> EntitlerTimeoutError:
         """The error for an action that ran past the timeout."""
-        seconds = self.ops.engine.timeout if self.seconds is None else self.seconds
+        seconds = self.deadline
         return EntitlerTimeoutError(f"Entitler did not answer within {seconds:g} seconds.")
 
     def _excess(self, amount: int) -> Gen[UsageResult]:
@@ -1110,7 +1108,7 @@ def create_customer(
     period: str | None,
     metadata: Mapping[str, str] | None,
     key: object,
-    seconds: float | None,
+    seconds: float,
     log: Callable[[Page[UsageEvent]], L],
 ) -> Gen[CustomerDetail[L]]:
     """`POST /customers`."""

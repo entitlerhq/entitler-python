@@ -45,7 +45,7 @@ from ._settings import (
     server_key,
 )
 from ._snapshot import VerifiedSnapshot, verify_snapshot
-from ._values import CUSTOMER_ID, require_id
+from ._values import CLIENT_TIMEOUT, CUSTOMER_ID, require_id
 from ._visitor import new_visitor_id
 
 
@@ -63,7 +63,7 @@ class Customers:
         track: str | None = None,
         include_test: bool = False,
         cursor: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> CustomerPager:
         """Every customer matching the options, a page at a time, each fetched when reached.
 
@@ -95,7 +95,7 @@ class Customers:
         period: str | None = None,
         metadata: Mapping[str, str] | None = None,
         idempotency_key: str | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> CustomerDetail[UsageLog]:
         """Creates a customer, optionally on a plan, and answers their details."""
         engine = self._driver.engine
@@ -196,7 +196,7 @@ class EntitlerServer:
         events: Sequence[UsageEventInput],
         *,
         register: bool | None = None,
-        timeout: float | None = None,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> UsageEventsResult:
         """Records many usage events in observe mode, each under its own idempotency key.
 
@@ -213,7 +213,11 @@ class EntitlerServer:
         return self._driver.run(record_batch(self._driver.engine, plan, seconds))
 
     def pricing(
-        self, *, visitor: str | None = None, revalidate: bool = False, timeout: float | None = None
+        self,
+        *,
+        visitor: str | None = None,
+        revalidate: bool = False,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> Pricing:
         """The pricing on sale, signed out, through the answer cache.
 
@@ -221,15 +225,15 @@ class EntitlerServer:
         """
         return self._driver.run(pricing(self._driver.engine, visitor, revalidate, timeout))
 
-    def features(self, *, revalidate: bool = False, timeout: float | None = None) -> FeatureList:
+    def features(self, *, revalidate: bool = False, timeout: float = CLIENT_TIMEOUT) -> FeatureList:
         """The catalogue's features, through the answer cache."""
         return self._driver.run(features(self._driver.engine, revalidate, timeout))
 
-    def scopes(self, *, timeout: float | None = None) -> Scopes:
+    def scopes(self, *, timeout: float = CLIENT_TIMEOUT) -> Scopes:
         """The scopes this client's key holds, asked afresh on each call."""
         return self._driver.run(scopes(self._driver.engine, timeout, identity=False))
 
-    def snapshot_keys(self, *, timeout: float | None = None) -> SnapshotKeys:
+    def snapshot_keys(self, *, timeout: float = CLIENT_TIMEOUT) -> SnapshotKeys:
         """The public keys that verify snapshots. Sends no credential."""
         return self._driver.run(snapshot_keys(self._driver.engine, timeout))[0]
 
@@ -431,7 +435,7 @@ class EntitlerClient:
         return self._me
 
     def register(
-        self, *, idempotency_key: str | None = None, timeout: float | None = None
+        self, *, idempotency_key: str | None = None, timeout: float = CLIENT_TIMEOUT
     ) -> RegisteredCustomer:
         """Registers the signed-in person as a customer; call it after each sign-in.
 
@@ -443,7 +447,7 @@ class EntitlerClient:
         me = self.me
         return self._driver.run(me._ops.register_me(idempotency_key, timeout))
 
-    def scopes(self, *, timeout: float | None = None) -> Scopes:
+    def scopes(self, *, timeout: float = CLIENT_TIMEOUT) -> Scopes:
         """The scopes the credential holds and, for an identity client, `registration`."""
         if self._me is None:
             raise TypeError(SIGN_IN)
@@ -452,7 +456,11 @@ class EntitlerClient:
         )
 
     def pricing(
-        self, *, visitor: str | None = None, revalidate: bool = False, timeout: float | None = None
+        self,
+        *,
+        visitor: str | None = None,
+        revalidate: bool = False,
+        timeout: float = CLIENT_TIMEOUT,
     ) -> Pricing:
         """The pricing on sale, signed out, with the client's visitor, through the answer cache.
 
@@ -463,7 +471,7 @@ class EntitlerClient:
             raise TypeError("Read the signed-in customer's pricing with me.pricing().")
         return self._driver.run(pricing(self._driver.engine, visitor, revalidate, timeout))
 
-    def snapshot_keys(self, *, timeout: float | None = None) -> SnapshotKeys:
+    def snapshot_keys(self, *, timeout: float = CLIENT_TIMEOUT) -> SnapshotKeys:
         """The public keys that verify snapshots. Sends no credential."""
         return self._driver.run(snapshot_keys(self._driver.engine, timeout))[0]
 

@@ -169,7 +169,10 @@ def retry_after(headers: Mapping[str, str], now: float) -> float | None:
     if not value:
         return None
     if re.fullmatch(r"[0-9]+", value):
-        return float(min(int(value), int(LONGEST)))
+        digits = value.lstrip("0") or "0"
+        if len(digits) > len(str(int(LONGEST))):
+            return LONGEST
+        return float(min(int(digits), int(LONGEST)))
     date = _http_date(value)
     return None if date is None else max(0.0, date - now)
 

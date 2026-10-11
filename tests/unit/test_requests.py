@@ -708,18 +708,26 @@ REFUSALS: list[tuple[Callable[[ServerCustomer], Any], str]] = [
         lambda c: c.subscribe("x", quantity=0),
         "Pass quantity as a whole number from 1 to 10000.",
     ),
-    (lambda c: c.check("sso", timeout=0), "Pass timeout as a positive number of seconds."),
+    (lambda c: c.check("sso", timeout=0), "Pass timeout as a number of seconds above 0."),
     (
         lambda c: c.check("sso", timeout=float("inf")),
-        "Pass timeout as a positive number of seconds.",
+        "Pass timeout as a number of seconds above 0.",
     ),
     (
         lambda c: c.check("sso", timeout=float("nan")),
-        "Pass timeout as a positive number of seconds.",
+        "Pass timeout as a number of seconds above 0.",
     ),
     (
         lambda c: c.is_entitled("sso", default=False, timeout=-1),
-        "Pass timeout as a positive number of seconds.",
+        "Pass timeout as a number of seconds above 0.",
+    ),
+    (
+        lambda c: c.is_entitled("sso", default=False, timeout=None),  # type: ignore[arg-type]
+        "Pass timeout as a number of seconds above 0.",
+    ),
+    (
+        lambda c: c.record_usage(CREDITS, 1, idempotency_key="k", timeout=None),  # type: ignore[arg-type]
+        "Pass timeout as a number of seconds above 0.",
     ),
     (lambda c: c.is_entitled("sso", default="no"), "Pass default as True or False."),  # type: ignore[arg-type]
     (
