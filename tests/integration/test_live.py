@@ -172,18 +172,18 @@ def test_holds(customer: ServerCustomer) -> None:
     assert released.release().outcome == "released"
     with customer.with_hold(CREDITS, 4, idempotency_key=unique("with-")) as work:
         work.use(2)
-    with (
-        pytest.raises(RuntimeError),
-        customer.with_hold(CREDITS, 4, idempotency_key=unique("fail-")) as failing,
-    ):
-        failing.use(1)
-        raise RuntimeError("the work failed after using 1")
-    with (
-        pytest.raises(RuntimeError),
-        customer.with_hold(CREDITS, 4, idempotency_key=unique("early-")),
-    ):
-        raise RuntimeError("the work failed before using any")
+    with pytest.raises(RuntimeError):
+        fail_after_using(customer, 1)
+    with pytest.raises(RuntimeError):
+        fail_after_using(customer, None)
     assert customer.check(CREDITS).used == 3 + 2 + 1
+
+
+def fail_after_using(customer: ServerCustomer, used: int | None) -> None:
+    with customer.with_hold(CREDITS, 4, idempotency_key=unique("fail-")) as hold:
+        if used is not None:
+            hold.use(used)
+        raise RuntimeError("the work failed")
 
 
 def test_batches_replay_when_resent(server: EntitlerServer, customer: ServerCustomer) -> None:
@@ -216,14 +216,14 @@ def test_customer_tokens_and_the_in_app_client(
     server: EntitlerServer, customer: ServerCustomer
 ) -> None:
     plain = customer.token()
-    assert [scope.value for scope in plain.scopes] == ["entitlements:read"]
+    assert [str(scope) for scope in plain.scopes] == ["entitlements:read"]
     scopes = [
         CustomerTokenScope.ENTITLEMENTS_READ,
         CustomerTokenScope.USAGE_WRITE,
         CustomerTokenScope.BILLING_SELF,
     ]
     with EntitlerClient(token=lambda: customer.token(scopes=scopes).token) as client:
-        assert {s.value for s in client.scopes().scopes} == {
+        assert {str(s) for s in client.scopes().scopes} == {
             "entitlements:read",
             "usage:write",
             "billing:self",
@@ -234,9 +234,10 @@ def test_customer_tokens_and_the_in_app_client(
             client.me.record_usage(CREDITS, 1, idempotency_key=unique("app-")).outcome == "recorded"
         )
         try:
-            assert client.me.subscribe("pro_basic", period="monthly").next == NextStep.DONE
+            outcome: str = client.me.subscribe("pro_basic", period="monthly").next
         except APIError as error:
-            assert error.code == ErrorCode.CAPABILITY_REQUIRED
+            outcome = error.code
+        assert outcome in {NextStep.DONE, ErrorCode.CAPABILITY_REQUIRED}
     with EntitlerClient(token=plain.token) as limited, pytest.raises(APIError) as refused:
         limited.me.subscribe("pro", period="monthly")
     assert (refused.value.status, refused.value.code) == (403, "scope_required")
@@ -244,7 +245,7 @@ def test_customer_tokens_and_the_in_app_client(
 
 @pytest.mark.skipif(
     not PUBLISHABLE,
-    reason="ENTITLER_TEST_PUBLISHABLE_KEY is not set, so signed-out pricing did not run; CI runs it.",
+    reason="ENTITLER_TEST_PUBLISHABLE_KEY is not set, so signed-out pricing did not run.",
 )
 def test_signed_out_pricing_with_a_publishable_key() -> None:
     with EntitlerClient(key=PUBLISHABLE) as client:
@@ -268,9 +269,10 @@ def test_tracks(customer: ServerCustomer) -> None:
 def test_as_of_reads(customer: ServerCustomer) -> None:
     later = datetime.now(UTC) + timedelta(days=40)
     try:
-        assert customer.check(EXPORT_PDF, as_of=later).as_of.date() == later.date()
+        outcome = customer.check(EXPORT_PDF, as_of=later).as_of.date().isoformat()
     except APIError as error:
-        assert error.code == ErrorCode.CAPABILITY_REQUIRED
+        outcome = error.code
+    assert outcome in {later.date().isoformat(), ErrorCode.CAPABILITY_REQUIRED}
 
 
 def test_billing_the_customer_chooses(customer: ServerCustomer) -> None:
