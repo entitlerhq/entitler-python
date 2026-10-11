@@ -1,0 +1,2086 @@
+{
+  "description": "Write and billing answer decoding (sections 5.1, 5.2, 5.4, 5.5, 6.2 and 7.2). Build a server client with the key ent_test_conformance_server_key, maxRetries 0 and an empty cache, make call on customer(call.customer) through a fake transport that answers status, headers and body (JSON text), and compare the decoded answer with outcome, or the ApiError raised. call is check(feature), plans(), recordUsage(feature, amount, { idempotencyKey }), subscribe(plan, { period, returnUrl, idempotencyKey }), cancel({ addOn, idempotencyKey }), undoPendingChange({ idempotencyKey }), setPlan(plan, { period, until, reason, actor, idempotencyKey }), setAddOn(addOn, { quantity, idempotencyKey }), grant(feature, { value, days, reason, actor, idempotencyKey }), revokeGrant(grantId, { idempotencyKey }), billingPortal({ returnUrl }) or syncBilling(), passing only the arguments call holds. Header names are case-insensitive, and replayed is true only when the answer carries Idempotent-Replayed: true. outcome holds the fields an SDK exposes, in the language's naming: for a check, entitled and upgrades (each upgrade's plan key, name, move, action and reason); for plans(), held (each held plan's plan as { id, key, name, kind }, product as { key, name } or null, version (a whole number or null), byDefault, period as { key, label } or null, renewsAt, pending as null, { type: move, plan } or { type: cancel, movingTo } (movingTo { id, key, name } or null), and billedBy) and options (each option's plan as { id, key, name, kind, description, default }, product as { key, name } or null, from as { id, key, name } or null, move, action, reason, when, periods as [{ key, label }], impact as [{ kind, text }], and skus as [{ period, connector, ids, price }], with period { key, label } or null, connector its raw string, ids the connector's ids by field, and price { amount, currency, interval, intervalCount, tax } or null); for recordUsage, the UsageResult's outcome, refusal, id, holdId, mode, amount, meterChange, overBy, late, occurredAt, expiresAt, reportedAs, entitled, used, remaining, held, upgrades and replayed; for subscribe, the SubscribeStep's next, with url for pay, billedBy for manage, and the PlanChange fields with replayed for done, while an unknown step holds only its raw next; for cancel, undoPendingChange, setPlan and setAddOn, the PlanChange's product ({ key, name } or null), plan ({ id, key, name } or null), quantity, effective, at, until, changed and replayed; for grant and revokeGrant, the GrantChange's grant (its id, feature, until and revokedAt) and replayed; for billingPortal, url; for syncBilling, changed. An enum value this version does not know is { \"unknown\": raw }, null is none, and a decoded instant is { \"instant\", \"epochMillis\" }. A 2xx body that does not decode, a field of another JSON type included, fails with the ApiError invalid_response, and its outcome gives the error's fields as errors.json does: kind, status, code, message, requestId, retryAfterSeconds, idempotencyKey (the key the call sent, or null) and payment.",
+  "spec": "5.1, 5.2, 5.4, 5.5, 6.2, 7.2",
+  "cases": [
+    {
+      "name": "check-upgrade-to-buy",
+      "why": "A check the customer is not entitled to lists an upgrade with its plan, name, move upgrade, action buy and a null reason.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "sso"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"sso\",\"type\":\"boolean\",\"entitled\":false,\"value\":0,\"sources\":[],\"upgrades\":[{\"plan\":\"pro\",\"name\":\"Pro\",\"move\":\"upgrade\",\"action\":\"buy\",\"reason\":null}],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "entitled": false,
+        "upgrades": [
+          {
+            "plan": "pro",
+            "name": "Pro",
+            "move": "upgrade",
+            "action": "buy",
+            "reason": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "check-upgrade-to-contact",
+      "why": "An upgrade only the company can make has action contact, so the app shows a sales contact, not a purchase.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "sso"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"sso\",\"type\":\"boolean\",\"entitled\":false,\"value\":0,\"sources\":[],\"upgrades\":[{\"plan\":\"enterprise\",\"name\":\"Enterprise\",\"move\":\"upgrade\",\"action\":\"contact\",\"reason\":null}],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "entitled": false,
+        "upgrades": [
+          {
+            "plan": "enterprise",
+            "name": "Enterprise",
+            "move": "upgrade",
+            "action": "contact",
+            "reason": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "check-upgrade-unavailable-with-reason",
+      "why": "An unavailable upgrade keeps its reason for the developer.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "sso"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"sso\",\"type\":\"boolean\",\"entitled\":false,\"value\":0,\"sources\":[],\"upgrades\":[{\"plan\":\"pro\",\"name\":\"Pro\",\"move\":\"upgrade\",\"action\":\"unavailable\",\"reason\":\"Pro has no price for this customer's billing provider.\"}],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "entitled": false,
+        "upgrades": [
+          {
+            "plan": "pro",
+            "name": "Pro",
+            "move": "upgrade",
+            "action": "unavailable",
+            "reason": "Pro has no price for this customer's billing provider."
+          }
+        ]
+      }
+    },
+    {
+      "name": "check-upgrades-each-known-move",
+      "why": "Each of the six moves, subscribe, upgrade, downgrade, switch, add and replace, decodes as a known value, in the order the answer lists them.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "sso"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"sso\",\"type\":\"boolean\",\"entitled\":false,\"value\":0,\"sources\":[],\"upgrades\":[{\"plan\":\"starter\",\"name\":\"Starter\",\"move\":\"subscribe\",\"action\":\"buy\",\"reason\":null},{\"plan\":\"pro\",\"name\":\"Pro\",\"move\":\"upgrade\",\"action\":\"buy\",\"reason\":null},{\"plan\":\"pro_basic\",\"name\":\"Pro Basic\",\"move\":\"downgrade\",\"action\":\"buy\",\"reason\":null},{\"plan\":\"team\",\"name\":\"Team\",\"move\":\"switch\",\"action\":\"buy\",\"reason\":null},{\"plan\":\"sso_addon\",\"name\":\"SSO\",\"move\":\"add\",\"action\":\"buy\",\"reason\":null},{\"plan\":\"support_standard\",\"name\":\"Standard support\",\"move\":\"replace\",\"action\":\"buy\",\"reason\":null}],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "entitled": false,
+        "upgrades": [
+          {
+            "plan": "starter",
+            "name": "Starter",
+            "move": "subscribe",
+            "action": "buy",
+            "reason": null
+          },
+          {
+            "plan": "pro",
+            "name": "Pro",
+            "move": "upgrade",
+            "action": "buy",
+            "reason": null
+          },
+          {
+            "plan": "pro_basic",
+            "name": "Pro Basic",
+            "move": "downgrade",
+            "action": "buy",
+            "reason": null
+          },
+          {
+            "plan": "team",
+            "name": "Team",
+            "move": "switch",
+            "action": "buy",
+            "reason": null
+          },
+          {
+            "plan": "sso_addon",
+            "name": "SSO",
+            "move": "add",
+            "action": "buy",
+            "reason": null
+          },
+          {
+            "plan": "support_standard",
+            "name": "Standard support",
+            "move": "replace",
+            "action": "buy",
+            "reason": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "check-upgrade-unknown-move-and-action",
+      "why": "A move and an action the SDK does not know are kept as their raw strings, never refused.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "sso"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"sso\",\"type\":\"boolean\",\"entitled\":false,\"value\":0,\"sources\":[],\"upgrades\":[{\"plan\":\"pro\",\"name\":\"Pro\",\"move\":\"trial\",\"action\":\"waitlist\",\"reason\":null}],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "entitled": false,
+        "upgrades": [
+          {
+            "plan": "pro",
+            "name": "Pro",
+            "move": {
+              "unknown": "trial"
+            },
+            "action": {
+              "unknown": "waitlist"
+            },
+            "reason": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "check-upgrade-move-a-number",
+      "why": "An upgrade whose move is a number, not a string, does not decode, so the check is invalid_response.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "sso"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"sso\",\"type\":\"boolean\",\"entitled\":false,\"value\":0,\"sources\":[],\"upgrades\":[{\"plan\":\"pro\",\"name\":\"Pro\",\"move\":2,\"action\":\"buy\",\"reason\":null}],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 200,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "plans-held-plan-billed-by-stripe",
+      "why": "A held plan carries its period as a key and a label, when it renews, no pending change and billedBy stripe.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"monthly\",\"label\":\"Monthly\"},\"renewsAt\":\"2026-08-01T00:00:00.000Z\",\"pending\":null,\"billedBy\":\"stripe\"}],\"options\":[],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 3,
+            "byDefault": false,
+            "period": {
+              "key": "monthly",
+              "label": "Monthly"
+            },
+            "renewsAt": {
+              "instant": "2026-08-01T00:00:00.000Z",
+              "epochMillis": 1785542400000
+            },
+            "pending": null,
+            "billedBy": "stripe"
+          }
+        ],
+        "options": []
+      }
+    },
+    {
+      "name": "plans-held-default-plan",
+      "why": "A default plan held because nothing else is has no period, no renewal and nothing billing it.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_free\",\"key\":\"free\",\"name\":\"Free\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":1,\"byDefault\":true,\"period\":null,\"renewsAt\":null,\"pending\":null,\"billedBy\":null}],\"options\":[],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_free",
+              "key": "free",
+              "name": "Free",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 1,
+            "byDefault": true,
+            "period": null,
+            "renewsAt": null,
+            "pending": null,
+            "billedBy": null
+          }
+        ],
+        "options": []
+      }
+    },
+    {
+      "name": "plans-held-plan-billed-by-apple",
+      "why": "A plan the App Store bills has billedBy apple, so the app sends the customer to the store's own page.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"yearly\",\"label\":\"Yearly\"},\"renewsAt\":\"2027-07-01T00:00:00.000Z\",\"pending\":null,\"billedBy\":\"apple\"}],\"options\":[],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 3,
+            "byDefault": false,
+            "period": {
+              "key": "yearly",
+              "label": "Yearly"
+            },
+            "renewsAt": {
+              "instant": "2027-07-01T00:00:00.000Z",
+              "epochMillis": 1814400000000
+            },
+            "pending": null,
+            "billedBy": "apple"
+          }
+        ],
+        "options": []
+      }
+    },
+    {
+      "name": "plans-held-plan-billed-by-google",
+      "why": "A plan Google Play bills has billedBy google.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"monthly\",\"label\":\"Monthly\"},\"renewsAt\":\"2026-08-01T00:00:00.000Z\",\"pending\":null,\"billedBy\":\"google\"}],\"options\":[],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 3,
+            "byDefault": false,
+            "period": {
+              "key": "monthly",
+              "label": "Monthly"
+            },
+            "renewsAt": {
+              "instant": "2026-08-01T00:00:00.000Z",
+              "epochMillis": 1785542400000
+            },
+            "pending": null,
+            "billedBy": "google"
+          }
+        ],
+        "options": []
+      }
+    },
+    {
+      "name": "plans-held-plan-billed-by-unknown-store",
+      "why": "A billedBy value the SDK does not know is kept as its raw string.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"monthly\",\"label\":\"Monthly\"},\"renewsAt\":\"2026-08-01T00:00:00.000Z\",\"pending\":null,\"billedBy\":\"amazon\"}],\"options\":[],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 3,
+            "byDefault": false,
+            "period": {
+              "key": "monthly",
+              "label": "Monthly"
+            },
+            "renewsAt": {
+              "instant": "2026-08-01T00:00:00.000Z",
+              "epochMillis": 1785542400000
+            },
+            "pending": null,
+            "billedBy": {
+              "unknown": "amazon"
+            }
+          }
+        ],
+        "options": []
+      }
+    },
+    {
+      "name": "plans-period-label-renamed",
+      "why": "A period keeps its stable key when its label is renamed, and the label is kept as display copy.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"yearly\",\"label\":\"Annual\"},\"renewsAt\":\"2026-08-01T00:00:00.000Z\",\"pending\":null,\"billedBy\":\"stripe\"}],\"options\":[],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 3,
+            "byDefault": false,
+            "period": {
+              "key": "yearly",
+              "label": "Annual"
+            },
+            "renewsAt": {
+              "instant": "2026-08-01T00:00:00.000Z",
+              "epochMillis": 1785542400000
+            },
+            "pending": null,
+            "billedBy": "stripe"
+          }
+        ],
+        "options": []
+      }
+    },
+    {
+      "name": "plans-pending-move",
+      "why": "A held plan with a move booked for renewal carries the plan it moves to.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"monthly\",\"label\":\"Monthly\"},\"renewsAt\":\"2026-08-01T00:00:00.000Z\",\"pending\":{\"type\":\"move\",\"plan\":{\"id\":\"pln_conformance_pro_basic\",\"key\":\"pro_basic\",\"name\":\"Pro Basic\"}},\"billedBy\":\"stripe\"}],\"options\":[],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 3,
+            "byDefault": false,
+            "period": {
+              "key": "monthly",
+              "label": "Monthly"
+            },
+            "renewsAt": {
+              "instant": "2026-08-01T00:00:00.000Z",
+              "epochMillis": 1785542400000
+            },
+            "pending": {
+              "type": "move",
+              "plan": {
+                "id": "pln_conformance_pro_basic",
+                "key": "pro_basic",
+                "name": "Pro Basic"
+              }
+            },
+            "billedBy": "stripe"
+          }
+        ],
+        "options": []
+      }
+    },
+    {
+      "name": "plans-pending-cancel",
+      "why": "A held plan with a cancel booked for renewal carries the default plan it leads to.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"monthly\",\"label\":\"Monthly\"},\"renewsAt\":\"2026-08-01T00:00:00.000Z\",\"pending\":{\"type\":\"cancel\",\"movingTo\":{\"id\":\"pln_conformance_free\",\"key\":\"free\",\"name\":\"Free\"}},\"billedBy\":\"stripe\"}],\"options\":[],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 3,
+            "byDefault": false,
+            "period": {
+              "key": "monthly",
+              "label": "Monthly"
+            },
+            "renewsAt": {
+              "instant": "2026-08-01T00:00:00.000Z",
+              "epochMillis": 1785542400000
+            },
+            "pending": {
+              "type": "cancel",
+              "movingTo": {
+                "id": "pln_conformance_free",
+                "key": "free",
+                "name": "Free"
+              }
+            },
+            "billedBy": "stripe"
+          }
+        ],
+        "options": []
+      }
+    },
+    {
+      "name": "plans-options-each-action",
+      "why": "Each option carries its plan with description and default, product, from, move, action and reason, when, periods as a key and a label, impact lines and SKUs with a price or none: a purchase, a sales-led move and an add-on that is unavailable for a reason.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"monthly\",\"label\":\"Monthly\"},\"renewsAt\":\"2026-08-01T00:00:00.000Z\",\"pending\":null,\"billedBy\":\"stripe\"}],\"options\":[{\"plan\":{\"id\":\"pln_conformance_team\",\"key\":\"team\",\"name\":\"Team\",\"kind\":\"plan\",\"description\":\"For teams that share one workspace.\",\"default\":false},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"from\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"move\":\"upgrade\",\"action\":\"buy\",\"reason\":null,\"when\":\"now\",\"periods\":[{\"key\":\"monthly\",\"label\":\"Monthly\"},{\"key\":\"yearly\",\"label\":\"Yearly\"}],\"impact\":[{\"kind\":\"gains\",\"text\":\"SSO\"},{\"kind\":\"changes\",\"text\":\"AI credits from 1,000 to 5,000 credits\"}],\"skus\":[{\"period\":{\"key\":\"monthly\",\"label\":\"Monthly\"},\"connector\":\"stripe\",\"ids\":{\"priceId\":\"price_conformance_team_monthly\"},\"price\":{\"amount\":4900,\"currency\":\"aud\",\"interval\":\"month\",\"intervalCount\":1,\"tax\":\"exclusive\"}},{\"period\":{\"key\":\"yearly\",\"label\":\"Yearly\"},\"connector\":\"stripe\",\"ids\":{\"priceId\":\"price_conformance_team_yearly\"},\"price\":null}]},{\"plan\":{\"id\":\"pln_conformance_enterprise\",\"key\":\"enterprise\",\"name\":\"Enterprise\",\"kind\":\"plan\",\"description\":\"For organisations that need audit logs and a contract.\",\"default\":false},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"from\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"move\":\"upgrade\",\"action\":\"contact\",\"reason\":null,\"when\":\"now\",\"periods\":[{\"key\":\"yearly\",\"label\":\"Yearly\"}],\"impact\":[{\"kind\":\"gains\",\"text\":\"SSO\"},{\"kind\":\"gains\",\"text\":\"Audit log\"}],\"skus\":[]},{\"plan\":{\"id\":\"pln_conformance_sso_addon\",\"key\":\"sso_addon\",\"name\":\"SSO\",\"kind\":\"addon\",\"description\":\"Single sign-on through your identity provider.\",\"default\":false},\"product\":null,\"from\":null,\"move\":\"add\",\"action\":\"unavailable\",\"reason\":\"SSO has no price for this customer's billing provider.\",\"when\":\"now\",\"periods\":[{\"key\":\"monthly\",\"label\":\"Monthly\"}],\"impact\":[{\"kind\":\"gains\",\"text\":\"SSO\"}],\"skus\":[]}],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 3,
+            "byDefault": false,
+            "period": {
+              "key": "monthly",
+              "label": "Monthly"
+            },
+            "renewsAt": {
+              "instant": "2026-08-01T00:00:00.000Z",
+              "epochMillis": 1785542400000
+            },
+            "pending": null,
+            "billedBy": "stripe"
+          }
+        ],
+        "options": [
+          {
+            "plan": {
+              "id": "pln_conformance_team",
+              "key": "team",
+              "name": "Team",
+              "kind": "plan",
+              "description": "For teams that share one workspace.",
+              "default": false
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "from": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro"
+            },
+            "move": "upgrade",
+            "action": "buy",
+            "reason": null,
+            "when": "now",
+            "periods": [
+              {
+                "key": "monthly",
+                "label": "Monthly"
+              },
+              {
+                "key": "yearly",
+                "label": "Yearly"
+              }
+            ],
+            "impact": [
+              {
+                "kind": "gains",
+                "text": "SSO"
+              },
+              {
+                "kind": "changes",
+                "text": "AI credits from 1,000 to 5,000 credits"
+              }
+            ],
+            "skus": [
+              {
+                "period": {
+                  "key": "monthly",
+                  "label": "Monthly"
+                },
+                "connector": "stripe",
+                "ids": {
+                  "priceId": "price_conformance_team_monthly"
+                },
+                "price": {
+                  "amount": 4900,
+                  "currency": "aud",
+                  "interval": "month",
+                  "intervalCount": 1,
+                  "tax": "exclusive"
+                }
+              },
+              {
+                "period": {
+                  "key": "yearly",
+                  "label": "Yearly"
+                },
+                "connector": "stripe",
+                "ids": {
+                  "priceId": "price_conformance_team_yearly"
+                },
+                "price": null
+              }
+            ]
+          },
+          {
+            "plan": {
+              "id": "pln_conformance_enterprise",
+              "key": "enterprise",
+              "name": "Enterprise",
+              "kind": "plan",
+              "description": "For organisations that need audit logs and a contract.",
+              "default": false
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "from": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro"
+            },
+            "move": "upgrade",
+            "action": "contact",
+            "reason": null,
+            "when": "now",
+            "periods": [
+              {
+                "key": "yearly",
+                "label": "Yearly"
+              }
+            ],
+            "impact": [
+              {
+                "kind": "gains",
+                "text": "SSO"
+              },
+              {
+                "kind": "gains",
+                "text": "Audit log"
+              }
+            ],
+            "skus": []
+          },
+          {
+            "plan": {
+              "id": "pln_conformance_sso_addon",
+              "key": "sso_addon",
+              "name": "SSO",
+              "kind": "addon",
+              "description": "Single sign-on through your identity provider.",
+              "default": false
+            },
+            "product": null,
+            "from": null,
+            "move": "add",
+            "action": "unavailable",
+            "reason": "SSO has no price for this customer's billing provider.",
+            "when": "now",
+            "periods": [
+              {
+                "key": "monthly",
+                "label": "Monthly"
+              }
+            ],
+            "impact": [
+              {
+                "kind": "gains",
+                "text": "SSO"
+              }
+            ],
+            "skus": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "plans-option-downgrade-to-default-at-end",
+      "why": "A downgrade to the default plan has default true, takes effect at the end of the period, and lists no periods and no SKUs.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"monthly\",\"label\":\"Monthly\"},\"renewsAt\":\"2026-08-01T00:00:00.000Z\",\"pending\":null,\"billedBy\":\"stripe\"}],\"options\":[{\"plan\":{\"id\":\"pln_conformance_free\",\"key\":\"free\",\"name\":\"Free\",\"kind\":\"plan\",\"description\":\"The essentials, free for ever.\",\"default\":true},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"from\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"move\":\"downgrade\",\"action\":\"buy\",\"reason\":null,\"when\":\"end\",\"periods\":[],\"impact\":[{\"kind\":\"loses\",\"text\":\"Priority support\"},{\"kind\":\"changes\",\"text\":\"AI credits from 1,000 to 100 credits\"}],\"skus\":[]}],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 3,
+            "byDefault": false,
+            "period": {
+              "key": "monthly",
+              "label": "Monthly"
+            },
+            "renewsAt": {
+              "instant": "2026-08-01T00:00:00.000Z",
+              "epochMillis": 1785542400000
+            },
+            "pending": null,
+            "billedBy": "stripe"
+          }
+        ],
+        "options": [
+          {
+            "plan": {
+              "id": "pln_conformance_free",
+              "key": "free",
+              "name": "Free",
+              "kind": "plan",
+              "description": "The essentials, free for ever.",
+              "default": true
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "from": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro"
+            },
+            "move": "downgrade",
+            "action": "buy",
+            "reason": null,
+            "when": "end",
+            "periods": [],
+            "impact": [
+              {
+                "kind": "loses",
+                "text": "Priority support"
+              },
+              {
+                "kind": "changes",
+                "text": "AI credits from 1,000 to 100 credits"
+              }
+            ],
+            "skus": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "plans-option-unknown-move",
+      "why": "A move the SDK does not know is kept as its raw string, never refused, and the rest of the option still decodes.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"monthly\",\"label\":\"Monthly\"},\"renewsAt\":\"2026-08-01T00:00:00.000Z\",\"pending\":null,\"billedBy\":\"stripe\"}],\"options\":[{\"plan\":{\"id\":\"pln_conformance_team\",\"key\":\"team\",\"name\":\"Team\",\"kind\":\"plan\",\"description\":\"For teams that share one workspace.\",\"default\":false},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"from\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"move\":\"trial\",\"action\":\"buy\",\"reason\":null,\"when\":\"now\",\"periods\":[{\"key\":\"monthly\",\"label\":\"Monthly\"}],\"impact\":[{\"kind\":\"gains\",\"text\":\"SSO\"},{\"kind\":\"changes\",\"text\":\"AI credits from 1,000 to 5,000 credits\"}],\"skus\":[]}],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "held": [
+          {
+            "plan": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro",
+              "kind": "plan"
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "version": 3,
+            "byDefault": false,
+            "period": {
+              "key": "monthly",
+              "label": "Monthly"
+            },
+            "renewsAt": {
+              "instant": "2026-08-01T00:00:00.000Z",
+              "epochMillis": 1785542400000
+            },
+            "pending": null,
+            "billedBy": "stripe"
+          }
+        ],
+        "options": [
+          {
+            "plan": {
+              "id": "pln_conformance_team",
+              "key": "team",
+              "name": "Team",
+              "kind": "plan",
+              "description": "For teams that share one workspace.",
+              "default": false
+            },
+            "product": {
+              "key": "app",
+              "name": "App"
+            },
+            "from": {
+              "id": "pln_conformance_pro",
+              "key": "pro",
+              "name": "Pro"
+            },
+            "move": {
+              "unknown": "trial"
+            },
+            "action": "buy",
+            "reason": null,
+            "when": "now",
+            "periods": [
+              {
+                "key": "monthly",
+                "label": "Monthly"
+              }
+            ],
+            "impact": [
+              {
+                "kind": "gains",
+                "text": "SSO"
+              },
+              {
+                "kind": "changes",
+                "text": "AI credits from 1,000 to 5,000 credits"
+              }
+            ],
+            "skus": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "plans-option-period-a-string",
+      "why": "A period given as a bare label is a string where the schema takes { key, label }, so the option, and with it plans(), does not decode.",
+      "call": {
+        "method": "plans",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "\"conformance-1\"",
+        "cache-control": "private, no-cache"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"held\":[{\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\",\"kind\":\"plan\"},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"version\":3,\"byDefault\":false,\"period\":{\"key\":\"monthly\",\"label\":\"Monthly\"},\"renewsAt\":\"2026-08-01T00:00:00.000Z\",\"pending\":null,\"billedBy\":\"stripe\"}],\"options\":[{\"plan\":{\"id\":\"pln_conformance_team\",\"key\":\"team\",\"name\":\"Team\",\"kind\":\"plan\",\"description\":\"For teams that share one workspace.\",\"default\":false},\"product\":{\"key\":\"app\",\"name\":\"App\"},\"from\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"move\":\"upgrade\",\"action\":\"buy\",\"reason\":null,\"when\":\"now\",\"periods\":[\"Monthly\"],\"impact\":[{\"kind\":\"gains\",\"text\":\"SSO\"},{\"kind\":\"changes\",\"text\":\"AI credits from 1,000 to 5,000 credits\"}],\"skus\":[]}],\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 200,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "record-usage-recorded",
+      "why": "A recorded report answers its outcome, mode, amount, meter change and meter, with replayed false since the answer has no Idempotent-Replayed.",
+      "call": {
+        "method": "recordUsage",
+        "customer": "test_1001",
+        "feature": "ai_credits",
+        "amount": 5,
+        "idempotencyKey": "export-request-7731"
+      },
+      "status": 201,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"ai_credits\",\"type\":\"metered\",\"entitled\":true,\"value\":1000,\"sources\":[],\"used\":255,\"held\":0,\"remaining\":745,\"resetsAt\":\"2026-08-01T00:00:00.000Z\",\"upgrades\":[],\"outcome\":\"recorded\",\"refusal\":null,\"id\":\"use_conformance_0001\",\"holdId\":null,\"mode\":\"gate\",\"amount\":5,\"meterChange\":5,\"overBy\":0,\"late\":false,\"occurredAt\":\"2026-07-01T09:30:00.000Z\",\"expiresAt\":null,\"reportedAs\":\"api\",\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "outcome": "recorded",
+        "refusal": null,
+        "id": "use_conformance_0001",
+        "holdId": null,
+        "mode": "gate",
+        "amount": 5,
+        "meterChange": 5,
+        "overBy": 0,
+        "late": false,
+        "occurredAt": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "expiresAt": null,
+        "reportedAs": "api",
+        "entitled": true,
+        "used": 255,
+        "remaining": {
+          "kind": "amount",
+          "amount": 745
+        },
+        "held": 0,
+        "upgrades": [],
+        "replayed": false
+      }
+    },
+    {
+      "name": "record-usage-replayed",
+      "why": "A repeated key answers duplicate with Idempotent-Replayed: true, so replayed is true and the meter did not move.",
+      "call": {
+        "method": "recordUsage",
+        "customer": "test_1001",
+        "feature": "ai_credits",
+        "amount": 5,
+        "idempotencyKey": "export-request-7731"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "idempotent-replayed": "true"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"ai_credits\",\"type\":\"metered\",\"entitled\":true,\"value\":1000,\"sources\":[],\"used\":255,\"held\":0,\"remaining\":745,\"resetsAt\":\"2026-08-01T00:00:00.000Z\",\"upgrades\":[],\"outcome\":\"duplicate\",\"refusal\":null,\"id\":\"use_conformance_0001\",\"holdId\":null,\"mode\":\"gate\",\"amount\":5,\"meterChange\":0,\"overBy\":0,\"late\":false,\"occurredAt\":\"2026-07-01T09:30:00.000Z\",\"expiresAt\":null,\"reportedAs\":\"api\",\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "outcome": "duplicate",
+        "refusal": null,
+        "id": "use_conformance_0001",
+        "holdId": null,
+        "mode": "gate",
+        "amount": 5,
+        "meterChange": 0,
+        "overBy": 0,
+        "late": false,
+        "occurredAt": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "expiresAt": null,
+        "reportedAs": "api",
+        "entitled": true,
+        "used": 255,
+        "remaining": {
+          "kind": "amount",
+          "amount": 745
+        },
+        "held": 0,
+        "upgrades": [],
+        "replayed": true
+      }
+    },
+    {
+      "name": "record-usage-refused-over-allowance",
+      "why": "A gated report past the allowance answers refused with its refusal and upgrades, as an answer, not an error.",
+      "call": {
+        "method": "recordUsage",
+        "customer": "test_1001",
+        "feature": "ai_credits",
+        "amount": 5,
+        "idempotencyKey": "export-request-7731"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"ai_credits\",\"type\":\"metered\",\"entitled\":false,\"value\":1000,\"sources\":[],\"used\":1000,\"held\":0,\"remaining\":0,\"resetsAt\":\"2026-08-01T00:00:00.000Z\",\"upgrades\":[{\"plan\":\"pro\",\"name\":\"Pro\",\"move\":\"upgrade\",\"action\":\"buy\",\"reason\":null}],\"outcome\":\"refused\",\"refusal\":\"over_allowance\",\"id\":null,\"holdId\":null,\"mode\":\"gate\",\"amount\":5,\"meterChange\":0,\"overBy\":0,\"late\":false,\"occurredAt\":\"2026-07-01T09:30:00.000Z\",\"expiresAt\":null,\"reportedAs\":\"api\",\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "outcome": "refused",
+        "refusal": "over_allowance",
+        "id": null,
+        "holdId": null,
+        "mode": "gate",
+        "amount": 5,
+        "meterChange": 0,
+        "overBy": 0,
+        "late": false,
+        "occurredAt": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "expiresAt": null,
+        "reportedAs": "api",
+        "entitled": false,
+        "used": 1000,
+        "remaining": {
+          "kind": "amount",
+          "amount": 0
+        },
+        "held": 0,
+        "upgrades": [
+          {
+            "plan": "pro",
+            "name": "Pro",
+            "move": "upgrade",
+            "action": "buy",
+            "reason": null
+          }
+        ],
+        "replayed": false
+      }
+    },
+    {
+      "name": "record-usage-unknown-outcome-and-source",
+      "why": "An outcome and a reportedAs the SDK does not know are kept as their raw strings.",
+      "call": {
+        "method": "recordUsage",
+        "customer": "test_1001",
+        "feature": "ai_credits",
+        "amount": 5,
+        "idempotencyKey": "export-request-7731"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"ai_credits\",\"type\":\"metered\",\"entitled\":true,\"value\":1000,\"sources\":[],\"used\":255,\"held\":0,\"remaining\":745,\"resetsAt\":\"2026-08-01T00:00:00.000Z\",\"upgrades\":[],\"outcome\":\"deferred\",\"refusal\":null,\"id\":\"use_conformance_0001\",\"holdId\":null,\"mode\":\"gate\",\"amount\":5,\"meterChange\":5,\"overBy\":0,\"late\":false,\"occurredAt\":\"2026-07-01T09:30:00.000Z\",\"expiresAt\":null,\"reportedAs\":\"import\",\"environment\":{\"id\":\"env_conformance_test\",\"name\":\"Development\",\"kind\":\"test\"},\"track\":{\"id\":\"trk_all_customers\",\"name\":\"All customers\"},\"release\":2,\"change\":null,\"testers\":true,\"experiment\":null}",
+      "outcome": {
+        "outcome": {
+          "unknown": "deferred"
+        },
+        "refusal": null,
+        "id": "use_conformance_0001",
+        "holdId": null,
+        "mode": "gate",
+        "amount": 5,
+        "meterChange": 5,
+        "overBy": 0,
+        "late": false,
+        "occurredAt": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "expiresAt": null,
+        "reportedAs": {
+          "unknown": "import"
+        },
+        "entitled": true,
+        "used": 255,
+        "remaining": {
+          "kind": "amount",
+          "amount": 745
+        },
+        "held": 0,
+        "upgrades": [],
+        "replayed": false
+      }
+    },
+    {
+      "name": "subscribe-done-now",
+      "why": "A done step made now carries the PlanChange fields, with replayed false.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"done\",\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"quantity\":null,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":null,\"changed\":true}",
+      "outcome": {
+        "next": "done",
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_pro",
+          "key": "pro",
+          "name": "Pro"
+        },
+        "quantity": null,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": null,
+        "changed": true,
+        "replayed": false
+      }
+    },
+    {
+      "name": "subscribe-done-at-renewal",
+      "why": "A done step booked for renewal has effective renewal and at the instant it takes effect.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"done\",\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro_basic\",\"key\":\"pro_basic\",\"name\":\"Pro Basic\"},\"quantity\":null,\"effective\":\"renewal\",\"at\":\"2026-08-01T00:00:00.000Z\",\"until\":null,\"changed\":true}",
+      "outcome": {
+        "next": "done",
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_pro_basic",
+          "key": "pro_basic",
+          "name": "Pro Basic"
+        },
+        "quantity": null,
+        "effective": "renewal",
+        "at": {
+          "instant": "2026-08-01T00:00:00.000Z",
+          "epochMillis": 1785542400000
+        },
+        "until": null,
+        "changed": true,
+        "replayed": false
+      }
+    },
+    {
+      "name": "subscribe-done-replayed",
+      "why": "replayed rides on the done step: Idempotent-Replayed: true makes it true.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "Idempotent-Replayed": "true"
+      },
+      "body": "{\"next\":\"done\",\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"quantity\":null,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":null,\"changed\":true}",
+      "outcome": {
+        "next": "done",
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_pro",
+          "key": "pro",
+          "name": "Pro"
+        },
+        "quantity": null,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": null,
+        "changed": true,
+        "replayed": true
+      }
+    },
+    {
+      "name": "subscribe-pay",
+      "why": "A pay step carries the url of the provider's page.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"pay\",\"url\":\"https://checkout.stripe.com/c/pay/cs_test_conformance\"}",
+      "outcome": {
+        "next": "pay",
+        "url": "https://checkout.stripe.com/c/pay/cs_test_conformance"
+      }
+    },
+    {
+      "name": "subscribe-pay-with-replayed-header",
+      "why": "Only the done step carries replayed, so a pay step answered with Idempotent-Replayed: true holds its url alone.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "idempotent-replayed": "true"
+      },
+      "body": "{\"next\":\"pay\",\"url\":\"https://checkout.stripe.com/c/pay/cs_test_conformance\"}",
+      "outcome": {
+        "next": "pay",
+        "url": "https://checkout.stripe.com/c/pay/cs_test_conformance"
+      }
+    },
+    {
+      "name": "subscribe-confirming",
+      "why": "A confirming step holds nothing more: the provider is still confirming the payment.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"confirming\"}",
+      "outcome": {
+        "next": "confirming"
+      }
+    },
+    {
+      "name": "subscribe-manage-apple",
+      "why": "A manage step names the store that bills the product.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"manage\",\"billedBy\":\"apple\"}",
+      "outcome": {
+        "next": "manage",
+        "billedBy": "apple"
+      }
+    },
+    {
+      "name": "subscribe-manage-google",
+      "why": "A manage step can name Google Play.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"manage\",\"billedBy\":\"google\"}",
+      "outcome": {
+        "next": "manage",
+        "billedBy": "google"
+      }
+    },
+    {
+      "name": "subscribe-manage-unknown-store",
+      "why": "A store the SDK does not know is kept as its raw string.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"manage\",\"billedBy\":\"amazon\"}",
+      "outcome": {
+        "next": "manage",
+        "billedBy": {
+          "unknown": "amazon"
+        }
+      }
+    },
+    {
+      "name": "subscribe-unknown-next",
+      "why": "A step the SDK does not know is kept as an unknown case with its raw next.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"verify_identity\",\"url\":\"https://verify.example.com/session/conformance\"}",
+      "outcome": {
+        "next": {
+          "unknown": "verify_identity"
+        }
+      }
+    },
+    {
+      "name": "subscribe-done-unknown-effective",
+      "why": "An effective value the SDK does not know is kept as its raw string.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"done\",\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"quantity\":null,\"effective\":\"next_cycle\",\"at\":\"2026-08-01T00:00:00.000Z\",\"until\":null,\"changed\":true}",
+      "outcome": {
+        "next": "done",
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_pro",
+          "key": "pro",
+          "name": "Pro"
+        },
+        "quantity": null,
+        "effective": {
+          "unknown": "next_cycle"
+        },
+        "at": {
+          "instant": "2026-08-01T00:00:00.000Z",
+          "epochMillis": 1785542400000
+        },
+        "until": null,
+        "changed": true,
+        "replayed": false
+      }
+    },
+    {
+      "name": "subscribe-step-with-unknown-fields",
+      "why": "Unknown fields in a step are ignored.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"pay\",\"url\":\"https://checkout.stripe.com/c/pay/cs_test_conformance\",\"expiresAt\":\"2026-07-02T09:30:00.000Z\",\"provider\":{\"name\":\"stripe\"}}",
+      "outcome": {
+        "next": "pay",
+        "url": "https://checkout.stripe.com/c/pay/cs_test_conformance"
+      }
+    },
+    {
+      "name": "subscribe-done-changed-a-string",
+      "why": "A quoted boolean is another JSON type, so the step does not decode and the call fails with invalid_response.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":\"done\",\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"quantity\":null,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":null,\"changed\":\"true\"}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 200,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "upgrade-test_1001-pro-monthly",
+        "payment": null
+      }
+    },
+    {
+      "name": "subscribe-next-a-number",
+      "why": "A next that is a number, not a string, does not decode.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "returnUrl": "https://app.example.com/billing/return",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"next\":1}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 200,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "upgrade-test_1001-pro-monthly",
+        "payment": null
+      }
+    },
+    {
+      "name": "cancel-at-renewal",
+      "why": "A cancel at renewal names the plan it leaves the customer on, when it takes effect and changed true.",
+      "call": {
+        "method": "cancel",
+        "customer": "test_1001",
+        "idempotencyKey": "cancel-test_1001-2026-07-01"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_free\",\"key\":\"free\",\"name\":\"Free\"},\"quantity\":null,\"effective\":\"renewal\",\"at\":\"2026-08-01T00:00:00.000Z\",\"until\":null,\"changed\":true}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_free",
+          "key": "free",
+          "name": "Free"
+        },
+        "quantity": null,
+        "effective": "renewal",
+        "at": {
+          "instant": "2026-08-01T00:00:00.000Z",
+          "epochMillis": 1785542400000
+        },
+        "until": null,
+        "changed": true,
+        "replayed": false
+      }
+    },
+    {
+      "name": "cancel-nothing-to-cancel",
+      "why": "A cancel with nothing to cancel answers changed false, not an error.",
+      "call": {
+        "method": "cancel",
+        "customer": "test_1001",
+        "idempotencyKey": "cancel-test_1001-2026-07-01"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_free\",\"key\":\"free\",\"name\":\"Free\"},\"quantity\":null,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":null,\"changed\":false}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_free",
+          "key": "free",
+          "name": "Free"
+        },
+        "quantity": null,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": null,
+        "changed": false,
+        "replayed": false
+      }
+    },
+    {
+      "name": "cancel-add-on-now",
+      "why": "Removing an add-on now answers quantity 0, and plan none since nothing is left in its place.",
+      "call": {
+        "method": "cancel",
+        "customer": "test_1001",
+        "addOn": "sso_addon",
+        "idempotencyKey": "remove-sso-test_1001-2026-07-01"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":null,\"quantity\":0,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":null,\"changed\":true}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": null,
+        "quantity": 0,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": null,
+        "changed": true,
+        "replayed": false
+      }
+    },
+    {
+      "name": "undo-pending-change",
+      "why": "Undoing a booked change keeps the customer on their plan now, with changed true.",
+      "call": {
+        "method": "undoPendingChange",
+        "customer": "test_1001",
+        "idempotencyKey": "undo-test_1001-2026-07-01"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"quantity\":null,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":null,\"changed\":true}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_pro",
+          "key": "pro",
+          "name": "Pro"
+        },
+        "quantity": null,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": null,
+        "changed": true,
+        "replayed": false
+      }
+    },
+    {
+      "name": "undo-nothing-pending",
+      "why": "An undo with nothing pending answers changed false.",
+      "call": {
+        "method": "undoPendingChange",
+        "customer": "test_1001",
+        "idempotencyKey": "undo-test_1001-2026-07-01"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"quantity\":null,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":null,\"changed\":false}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_pro",
+          "key": "pro",
+          "name": "Pro"
+        },
+        "quantity": null,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": null,
+        "changed": false,
+        "replayed": false
+      }
+    },
+    {
+      "name": "set-plan-with-until",
+      "why": "A company change with until carries the instant the customer returns to the default plan.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "yearly",
+        "until": "2026-08-01T00:00:00.000Z",
+        "reason": "Annual deal signed.",
+        "actor": "hubspot",
+        "idempotencyKey": "deal-8841-won"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"quantity\":null,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":\"2026-08-01T00:00:00.000Z\",\"changed\":true}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_pro",
+          "key": "pro",
+          "name": "Pro"
+        },
+        "quantity": null,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": {
+          "instant": "2026-08-01T00:00:00.000Z",
+          "epochMillis": 1785542400000
+        },
+        "changed": true,
+        "replayed": false
+      }
+    },
+    {
+      "name": "set-plan-replayed",
+      "why": "A setPlan answered with Idempotent-Replayed: true has replayed true: the write changed nothing this time.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "yearly",
+        "until": "2026-08-01T00:00:00.000Z",
+        "reason": "Annual deal signed.",
+        "actor": "hubspot",
+        "idempotencyKey": "deal-8841-won"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "idempotent-replayed": "true"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"quantity\":null,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":\"2026-08-01T00:00:00.000Z\",\"changed\":true}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_pro",
+          "key": "pro",
+          "name": "Pro"
+        },
+        "quantity": null,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": {
+          "instant": "2026-08-01T00:00:00.000Z",
+          "epochMillis": 1785542400000
+        },
+        "changed": true,
+        "replayed": true
+      }
+    },
+    {
+      "name": "set-plan-replayed-header-false",
+      "why": "replayed is true only for Idempotent-Replayed: true, so false leaves it false.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "yearly",
+        "until": "2026-08-01T00:00:00.000Z",
+        "reason": "Annual deal signed.",
+        "actor": "hubspot",
+        "idempotencyKey": "deal-8841-won"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "idempotent-replayed": "false"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"quantity\":null,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":\"2026-08-01T00:00:00.000Z\",\"changed\":true}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_pro",
+          "key": "pro",
+          "name": "Pro"
+        },
+        "quantity": null,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": {
+          "instant": "2026-08-01T00:00:00.000Z",
+          "epochMillis": 1785542400000
+        },
+        "changed": true,
+        "replayed": false
+      }
+    },
+    {
+      "name": "set-plan-already-held",
+      "why": "The plan already held, with the same period, billing and until, answers changed false.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "yearly",
+        "until": "2026-08-01T00:00:00.000Z",
+        "reason": "Annual deal signed.",
+        "actor": "hubspot",
+        "idempotencyKey": "deal-8841-won"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_pro\",\"key\":\"pro\",\"name\":\"Pro\"},\"quantity\":null,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":\"2026-08-01T00:00:00.000Z\",\"changed\":false}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_pro",
+          "key": "pro",
+          "name": "Pro"
+        },
+        "quantity": null,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": {
+          "instant": "2026-08-01T00:00:00.000Z",
+          "epochMillis": 1785542400000
+        },
+        "changed": false,
+        "replayed": false
+      }
+    },
+    {
+      "name": "set-add-on-quantity",
+      "why": "setAddOn answers the add-on and its quantity after the change.",
+      "call": {
+        "method": "setAddOn",
+        "customer": "test_1001",
+        "addOn": "support_standard",
+        "quantity": 3,
+        "idempotencyKey": "deal-8841-support-seats"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_support_standard\",\"key\":\"support_standard\",\"name\":\"Standard support\"},\"quantity\":3,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":null,\"changed\":true}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": {
+          "id": "pln_conformance_support_standard",
+          "key": "support_standard",
+          "name": "Standard support"
+        },
+        "quantity": 3,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": null,
+        "changed": true,
+        "replayed": false
+      }
+    },
+    {
+      "name": "set-add-on-removed",
+      "why": "setAddOn with quantity 0 removes the add-on, answering quantity 0 and plan none.",
+      "call": {
+        "method": "setAddOn",
+        "customer": "test_1001",
+        "addOn": "support_standard",
+        "quantity": 0,
+        "idempotencyKey": "deal-8841-support-removed"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":null,\"quantity\":0,\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":null,\"changed\":true}",
+      "outcome": {
+        "product": {
+          "key": "app",
+          "name": "App"
+        },
+        "plan": null,
+        "quantity": 0,
+        "effective": "now",
+        "at": {
+          "instant": "2026-07-01T09:30:00.000Z",
+          "epochMillis": 1782898200000
+        },
+        "until": null,
+        "changed": true,
+        "replayed": false
+      }
+    },
+    {
+      "name": "plan-change-quantity-a-string",
+      "why": "A quoted number is another JSON type, so the PlanChange does not decode.",
+      "call": {
+        "method": "setAddOn",
+        "customer": "test_1001",
+        "addOn": "support_standard",
+        "quantity": 3,
+        "idempotencyKey": "deal-8841-support-seats"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"product\":{\"key\":\"app\",\"name\":\"App\"},\"plan\":{\"id\":\"pln_conformance_support_standard\",\"key\":\"support_standard\",\"name\":\"Standard support\"},\"quantity\":\"3\",\"effective\":\"now\",\"at\":\"2026-07-01T09:30:00.000Z\",\"until\":null,\"changed\":true}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 200,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "deal-8841-support-seats",
+        "payment": null
+      }
+    },
+    {
+      "name": "grant-made",
+      "why": "A grant answers the grant made, so a support tool keeps its id, with replayed false.",
+      "call": {
+        "method": "grant",
+        "customer": "test_1001",
+        "feature": "support_contacts",
+        "value": 10,
+        "days": 30,
+        "reason": "Goodwill for the outage on 30 June.",
+        "actor": "agent_417",
+        "idempotencyKey": "ticket-5521-grant"
+      },
+      "status": 201,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"grant\":{\"id\":\"grt_conformance_0001\",\"feature\":\"support_contacts\",\"value\":\"10\",\"from\":\"2026-07-01T09:30:00.000Z\",\"until\":\"2026-07-31T09:30:00.000Z\",\"revokedAt\":null,\"reason\":\"Goodwill for the outage on 30 June.\",\"by\":\"Support tools\",\"actor\":\"agent_417\"}}",
+      "outcome": {
+        "grant": {
+          "id": "grt_conformance_0001",
+          "feature": "support_contacts",
+          "until": {
+            "instant": "2026-07-31T09:30:00.000Z",
+            "epochMillis": 1785490200000
+          },
+          "revokedAt": null
+        },
+        "replayed": false
+      }
+    },
+    {
+      "name": "grant-replayed",
+      "why": "A grant repeated with its key answers the first grant with replayed true.",
+      "call": {
+        "method": "grant",
+        "customer": "test_1001",
+        "feature": "support_contacts",
+        "value": 10,
+        "days": 30,
+        "reason": "Goodwill for the outage on 30 June.",
+        "actor": "agent_417",
+        "idempotencyKey": "ticket-5521-grant"
+      },
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "Idempotent-Replayed": "true"
+      },
+      "body": "{\"grant\":{\"id\":\"grt_conformance_0001\",\"feature\":\"support_contacts\",\"value\":\"10\",\"from\":\"2026-07-01T09:30:00.000Z\",\"until\":\"2026-07-31T09:30:00.000Z\",\"revokedAt\":null,\"reason\":\"Goodwill for the outage on 30 June.\",\"by\":\"Support tools\",\"actor\":\"agent_417\"}}",
+      "outcome": {
+        "grant": {
+          "id": "grt_conformance_0001",
+          "feature": "support_contacts",
+          "until": {
+            "instant": "2026-07-31T09:30:00.000Z",
+            "epochMillis": 1785490200000
+          },
+          "revokedAt": null
+        },
+        "replayed": true
+      }
+    },
+    {
+      "name": "revoke-grant",
+      "why": "revokeGrant answers the revoked grant with the instant it was revoked.",
+      "call": {
+        "method": "revokeGrant",
+        "customer": "test_1001",
+        "grantId": "grt_conformance_0001",
+        "idempotencyKey": "ticket-5521-revoke"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"grant\":{\"id\":\"grt_conformance_0001\",\"feature\":\"support_contacts\",\"value\":\"10\",\"from\":\"2026-07-01T09:30:00.000Z\",\"until\":\"2026-07-31T09:30:00.000Z\",\"revokedAt\":\"2026-07-02T09:30:00.000Z\",\"reason\":\"Goodwill for the outage on 30 June.\",\"by\":\"Support tools\",\"actor\":\"agent_417\"}}",
+      "outcome": {
+        "grant": {
+          "id": "grt_conformance_0001",
+          "feature": "support_contacts",
+          "until": {
+            "instant": "2026-07-31T09:30:00.000Z",
+            "epochMillis": 1785490200000
+          },
+          "revokedAt": {
+            "instant": "2026-07-02T09:30:00.000Z",
+            "epochMillis": 1782984600000
+          }
+        },
+        "replayed": false
+      }
+    },
+    {
+      "name": "billing-portal-url",
+      "why": "The billing portal answers the provider's url.",
+      "call": {
+        "method": "billingPortal",
+        "customer": "test_1001",
+        "returnUrl": "https://app.example.com/billing"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"provider\":\"stripe\",\"url\":\"https://billing.stripe.com/p/session/test_conformance\"}",
+      "outcome": {
+        "url": "https://billing.stripe.com/p/session/test_conformance"
+      }
+    },
+    {
+      "name": "sync-billing-changed",
+      "why": "A billing sync that moved the customer answers changed true.",
+      "call": {
+        "method": "syncBilling",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"changed\":true}",
+      "outcome": {
+        "changed": true
+      }
+    },
+    {
+      "name": "sync-billing-unchanged",
+      "why": "A billing sync that moved nobody answers changed false.",
+      "call": {
+        "method": "syncBilling",
+        "customer": "test_1001"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"changed\":false}",
+      "outcome": {
+        "changed": false
+      }
+    }
+  ]
+}

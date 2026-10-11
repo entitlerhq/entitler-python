@@ -1,0 +1,1642 @@
+{
+  "description": "Path segment and query value encoding (section 6.1), and the ids and arguments refused before any request (sections 4.3, 5.4 and 5.5). Run every case on a server client with the fake transport and compare the URL it receives. Segment cases pass id as the parameter request names, with the other params as given, on customer(id) when the parameter is customer and on customer(params.id) otherwise. The route names the method: GET /customers/{id}/entitlements/{feature} is check(feature), DELETE /customers/{id}?erase=true is erase(), DELETE /customers/{id}/subscription/add-ons/{addOn} is cancel({ addOn }), DELETE /customers/{id}/subscription/add-ons/{addOn}/pending is undoPendingChange({ addOn }), PUT /customers/{id}/add-ons/{addOn} is setAddOn(addOn, { quantity }), POST /customers/{id}/meters/{feature}/adjustments is adjustMeter(feature, { by, idempotencyKey }), POST /customers/{id}/usage/holds/{holdId}/settle is settleUsage(holdId, amount), DELETE /customers/{id}/usage/holds/{holdId} is releaseUsage(holdId), DELETE /customers/{id}/grants/{grantId} is revokeGrant(grantId) and DELETE /customers/{id}/usage/{usageId} is cancelUsage(usageId), each with the other arguments request.options holds. baseUrl cases build the client with baseUrl, null for the default. Query cases set the query parameter to value: GET /customers is customers.list({ q }) or customers.list({ cursor }), reading its first page, DELETE /customers/{id}/subscription is cancel({ product }) and DELETE /customers/{id}/subscription/pending is undoPendingChange({ product }). Arguments cases make call on customer(call.customer) with call.options. outcome is the encoded segment or query value with the final request URL, or the exact argument error, raised before any request. Ids and query values are sent exactly as given, never trimmed. An id or query value that is not valid Unicode is given as UTF-16 code units (idUtf16, valueUtf16), only where strings can hold lone surrogates, and request leaves it out.",
+  "spec": "6.1, 4.3, 5.2, 5.3, 5.4, 5.5",
+  "cases": [
+    {
+      "name": "single-dot",
+      "why": "A lone dot is a dot segment that URL handling removes, so it is refused.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": ".",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": ".",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "two-dots",
+      "why": "Two dots would climb to the parent route, so they are refused.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "..",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "..",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "three-dots",
+      "why": "Every id made only of dots is refused, not only the dot segments.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "...",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "...",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "four-dots",
+      "why": "Longer runs of dots are refused too.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "....",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "....",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "two-dots-as-feature",
+      "why": "The rule applies to every path parameter, including the feature.",
+      "kind": "segment",
+      "parameter": "feature",
+      "id": "..",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": ".."
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "two-dots-as-hold-id",
+      "why": "The rule applies to hold ids.",
+      "kind": "segment",
+      "parameter": "holdId",
+      "id": "..",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/usage/holds/{holdId}",
+        "params": {
+          "id": "user_42",
+          "holdId": ".."
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "two-dots-as-grant-id",
+      "why": "The rule applies to grant ids.",
+      "kind": "segment",
+      "parameter": "grantId",
+      "id": "..",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/grants/{grantId}",
+        "params": {
+          "id": "user_42",
+          "grantId": ".."
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "single-dot-as-usage-id",
+      "why": "The rule applies to usage report ids.",
+      "kind": "segment",
+      "parameter": "usageId",
+      "id": ".",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/usage/{usageId}",
+        "params": {
+          "id": "user_42",
+          "usageId": "."
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "dot-inside",
+      "why": "A dot beside other characters is unreserved and stays as it is.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "a.b",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "a.b",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "a.b",
+        "url": "https://api.entitler.dev/customers/a.b/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "leading-dot",
+      "why": "An id that starts with a dot but holds other characters is accepted.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": ".hidden",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": ".hidden",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": ".hidden",
+        "url": "https://api.entitler.dev/customers/.hidden/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "trailing-dots",
+      "why": "Dots after other characters are accepted.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "v2..",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "v2..",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "v2..",
+        "url": "https://api.entitler.dev/customers/v2../entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "accented-precomposed",
+      "why": "Non-ASCII characters are encoded as UTF-8 bytes.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "café",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "café",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "caf%C3%A9",
+        "url": "https://api.entitler.dev/customers/caf%C3%A9/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "accented-decomposed",
+      "why": "A combining accent is encoded as given, with no Unicode normalisation.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "cafe\u0301",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "cafe\u0301",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "cafe%CC%81",
+        "url": "https://api.entitler.dev/customers/cafe%CC%81/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "emoji",
+      "why": "Characters outside the Basic Multilingual Plane are encoded as four UTF-8 bytes.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "user🎉42",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user🎉42",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "user%F0%9F%8E%8942",
+        "url": "https://api.entitler.dev/customers/user%F0%9F%8E%8942/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "three-byte-characters",
+      "why": "Three-byte UTF-8 characters are encoded byte by byte.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "日本€",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "日本€",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "%E6%97%A5%E6%9C%AC%E2%82%AC",
+        "url": "https://api.entitler.dev/customers/%E6%97%A5%E6%9C%AC%E2%82%AC/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "slash",
+      "why": "A slash is encoded so it never adds a path segment.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "/",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "/",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "%2F",
+        "url": "https://api.entitler.dev/customers/%2F/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "slash-inside",
+      "why": "A slash inside an id stays within one segment.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "team/42",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "team/42",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "team%2F42",
+        "url": "https://api.entitler.dev/customers/team%2F42/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "percent",
+      "why": "A percent sign is encoded, so the id is never read as an escape.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "%",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "%",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "%25",
+        "url": "https://api.entitler.dev/customers/%25/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "encoded-dots-literal",
+      "why": "Text that looks like encoded dots is encoded again and never becomes a dot segment.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "%2e%2e",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "%2e%2e",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "%252e%252e",
+        "url": "https://api.entitler.dev/customers/%252e%252e/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "question-mark",
+      "why": "A question mark is encoded so it never starts a query.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "?",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "?",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "%3F",
+        "url": "https://api.entitler.dev/customers/%3F/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "hash",
+      "why": "A hash is encoded so it never starts a fragment.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "#",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "#",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "%23",
+        "url": "https://api.entitler.dev/customers/%23/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "space",
+      "why": "A space is encoded as %20, never as a plus sign.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "john smith",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "john smith",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "john%20smith",
+        "url": "https://api.entitler.dev/customers/john%20smith/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "plus",
+      "why": "A plus sign is encoded as %2B.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "a+b",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "a+b",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "a%2Bb",
+        "url": "https://api.entitler.dev/customers/a%2Bb/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "identity-style-id",
+      "why": "Identity-token customer ids hold a colon and may hold a slash; both are encoded.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "d0123456789abcdefABCDEF:user/42",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "d0123456789abcdefABCDEF:user/42",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "d0123456789abcdefABCDEF%3Auser%2F42",
+        "url": "https://api.entitler.dev/customers/d0123456789abcdefABCDEF%3Auser%2F42/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "unreserved",
+      "why": "The unreserved characters of encodeURIComponent stay as they are.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()",
+        "url": "https://api.entitler.dev/customers/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "printable-ascii",
+      "why": "Every printable ASCII character other than the space, encoded exactly as encodeURIComponent does.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "!%22%23%24%25%26'()*%2B%2C-.%2F0123456789%3A%3B%3C%3D%3E%3F%40ABCDEFGHIJKLMNOPQRSTUVWXYZ%5B%5C%5D%5E_%60abcdefghijklmnopqrstuvwxyz%7B%7C%7D~",
+        "url": "https://api.entitler.dev/customers/!%22%23%24%25%26'()*%2B%2C-.%2F0123456789%3A%3B%3C%3D%3E%3F%40ABCDEFGHIJKLMNOPQRSTUVWXYZ%5B%5C%5D%5E_%60abcdefghijklmnopqrstuvwxyz%7B%7C%7D~/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "control-characters",
+      "why": "Control characters and DEL are percent-encoded.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "a\tb\nc\u0000d\u007fe",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "a\tb\nc\u0000d\u007fe",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "a%09b%0Ac%00d%7Fe",
+        "url": "https://api.entitler.dev/customers/a%09b%0Ac%00d%7Fe/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "slash-in-feature",
+      "why": "A feature key is encoded as one segment too.",
+      "kind": "segment",
+      "parameter": "feature",
+      "id": "a/b",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "a/b"
+        }
+      },
+      "outcome": {
+        "segment": "a%2Fb",
+        "url": "https://api.entitler.dev/customers/user_42/entitlements/a%2Fb"
+      }
+    },
+    {
+      "name": "surrounding-spaces",
+      "why": "An id is sent exactly as given, never trimmed, so its leading and trailing spaces are encoded.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": " user_42 ",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": " user_42 ",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "%20user_42%20",
+        "url": "https://api.entitler.dev/customers/%20user_42%20/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "trailing-line-feed-in-feature",
+      "why": "A feature key is never trimmed either, so its trailing line feed is encoded.",
+      "kind": "segment",
+      "parameter": "feature",
+      "id": "export_pdf\n",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "export_pdf\n"
+        }
+      },
+      "outcome": {
+        "segment": "export_pdf%0A",
+        "url": "https://api.entitler.dev/customers/user_42/entitlements/export_pdf%0A"
+      }
+    },
+    {
+      "name": "space-then-two-dots",
+      "why": "A space before two dots means the id is not only dots, so it is accepted and encoded.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": " ..",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": " ..",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": "%20..",
+        "url": "https://api.entitler.dev/customers/%20../entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "dot-then-space",
+      "why": "A dot followed by a space is not only dots, so it is accepted and encoded.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": ". ",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": ". ",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "segment": ".%20",
+        "url": "https://api.entitler.dev/customers/.%20/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "blank-customer",
+      "why": "An empty customer id would change the route, so it fails with its own argument error.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id your app uses for the customer."
+      }
+    },
+    {
+      "name": "blank-feature",
+      "why": "An empty feature would change the route, so it fails with its own argument error.",
+      "kind": "segment",
+      "parameter": "feature",
+      "id": "",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": ""
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Name the feature by its key."
+      }
+    },
+    {
+      "name": "blank-hold-id",
+      "why": "An empty hold id would change the route, so it fails with its own argument error.",
+      "kind": "segment",
+      "parameter": "holdId",
+      "id": "",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/usage/holds/{holdId}",
+        "params": {
+          "id": "user_42",
+          "holdId": ""
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id of the hold."
+      }
+    },
+    {
+      "name": "blank-grant-id",
+      "why": "An empty grant id would change the route, so it fails with its own argument error.",
+      "kind": "segment",
+      "parameter": "grantId",
+      "id": "",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/grants/{grantId}",
+        "params": {
+          "id": "user_42",
+          "grantId": ""
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id of the grant."
+      }
+    },
+    {
+      "name": "blank-usage-id",
+      "why": "An empty usage id would change the route, so it fails with its own argument error.",
+      "kind": "segment",
+      "parameter": "usageId",
+      "id": "",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/usage/{usageId}",
+        "params": {
+          "id": "user_42",
+          "usageId": ""
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id of the usage report."
+      }
+    },
+    {
+      "name": "blank-customer-space",
+      "why": "A customer id of only a space is blank, so it fails like an empty one.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": " ",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": " ",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id your app uses for the customer."
+      }
+    },
+    {
+      "name": "blank-customer-tab",
+      "why": "A customer id of only a tab is blank.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "\t",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "\t",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id your app uses for the customer."
+      }
+    },
+    {
+      "name": "blank-customer-mixed-whitespace",
+      "why": "A customer id of only spaces, tabs and line breaks is blank.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": " \t\r\n ",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": " \t\r\n ",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id your app uses for the customer."
+      }
+    },
+    {
+      "name": "blank-feature-space",
+      "why": "A feature key of only a space is blank and fails with the feature's own message.",
+      "kind": "segment",
+      "parameter": "feature",
+      "id": " ",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": " "
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Name the feature by its key."
+      }
+    },
+    {
+      "name": "blank-hold-id-line-feed",
+      "why": "A hold id of only a line feed is blank and fails with the hold's own message.",
+      "kind": "segment",
+      "parameter": "holdId",
+      "id": "\n",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/usage/holds/{holdId}",
+        "params": {
+          "id": "user_42",
+          "holdId": "\n"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id of the hold."
+      }
+    },
+    {
+      "name": "blank-grant-id-whitespace",
+      "why": "A grant id of only a space and a line break is blank and fails with the grant's own message.",
+      "kind": "segment",
+      "parameter": "grantId",
+      "id": " \r\n",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/grants/{grantId}",
+        "params": {
+          "id": "user_42",
+          "grantId": " \r\n"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id of the grant."
+      }
+    },
+    {
+      "name": "blank-usage-id-whitespace",
+      "why": "A usage report id of only a tab and a space is blank and fails with the usage report's own message.",
+      "kind": "segment",
+      "parameter": "usageId",
+      "id": "\t ",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/usage/{usageId}",
+        "params": {
+          "id": "user_42",
+          "usageId": "\t "
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id of the usage report."
+      }
+    },
+    {
+      "name": "lone-high-surrogate",
+      "why": "A high surrogate with no low surrogate after it is not valid Unicode, so the id is refused before any request.",
+      "kind": "segment",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "customer",
+      "idUtf16": [
+        55296,
+        97
+      ],
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "lone-low-surrogate",
+      "why": "A low surrogate with no high surrogate before it is not valid Unicode.",
+      "kind": "segment",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "customer",
+      "idUtf16": [
+        97,
+        56320
+      ],
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "reversed-surrogate-pair",
+      "why": "A low surrogate followed by a high one is two lone surrogates, not a pair.",
+      "kind": "segment",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "customer",
+      "idUtf16": [
+        57225,
+        55356
+      ],
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "high-surrogate-at-end-of-feature",
+      "why": "The Unicode rule applies to the feature, here a high surrogate at the very end.",
+      "kind": "segment",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "feature",
+      "idUtf16": [
+        101,
+        120,
+        112,
+        56319
+      ],
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "lone-surrogate-as-hold-id",
+      "why": "The Unicode rule applies to hold ids.",
+      "kind": "segment",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "holdId",
+      "idUtf16": [
+        104,
+        57343,
+        49
+      ],
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/usage/holds/{holdId}",
+        "params": {
+          "id": "user_42"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "lone-surrogate-as-grant-id",
+      "why": "The Unicode rule applies to grant ids.",
+      "kind": "segment",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "grantId",
+      "idUtf16": [
+        56319,
+        103
+      ],
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/grants/{grantId}",
+        "params": {
+          "id": "user_42"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "lone-surrogate-as-usage-id",
+      "why": "The Unicode rule applies to usage report ids.",
+      "kind": "segment",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "usageId",
+      "idUtf16": [
+        117,
+        56320
+      ],
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/usage/{usageId}",
+        "params": {
+          "id": "user_42"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "default-base-url",
+      "why": "Without a base URL the client uses https://api.entitler.dev.",
+      "kind": "baseUrl",
+      "baseUrl": null,
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "url": "https://api.entitler.dev/customers/user_42/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "base-url-trailing-slash",
+      "why": "A trailing slash on the base URL is removed.",
+      "kind": "baseUrl",
+      "baseUrl": "https://api.entitler.dev/",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "url": "https://api.entitler.dev/customers/user_42/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "base-url-trailing-slashes",
+      "why": "Every trailing slash is removed.",
+      "kind": "baseUrl",
+      "baseUrl": "https://api.entitler.dev///",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "url": "https://api.entitler.dev/customers/user_42/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "base-url-with-path",
+      "why": "A base URL with a path keeps it, without its trailing slash.",
+      "kind": "baseUrl",
+      "baseUrl": "http://localhost:8787/entitler/",
+      "request": {
+        "method": "GET",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "export_pdf"
+        }
+      },
+      "outcome": {
+        "url": "http://localhost:8787/entitler/customers/user_42/entitlements/export_pdf"
+      }
+    },
+    {
+      "name": "query-space",
+      "why": "A space in a query value is %20, never a plus sign.",
+      "kind": "query",
+      "parameter": "q",
+      "value": "a b",
+      "request": {
+        "method": "GET",
+        "route": "/customers"
+      },
+      "outcome": {
+        "encoded": "a%20b",
+        "url": "https://api.entitler.dev/customers?q=a%20b"
+      }
+    },
+    {
+      "name": "query-percent-and-plus",
+      "why": "Percent and plus signs in a query value are encoded.",
+      "kind": "query",
+      "parameter": "q",
+      "value": "50%+off",
+      "request": {
+        "method": "GET",
+        "route": "/customers"
+      },
+      "outcome": {
+        "encoded": "50%25%2Boff",
+        "url": "https://api.entitler.dev/customers?q=50%25%2Boff"
+      }
+    },
+    {
+      "name": "query-reserved",
+      "why": "Ampersands, equals signs and hashes are encoded so the value stays one parameter.",
+      "kind": "query",
+      "parameter": "q",
+      "value": "x&y=z#top",
+      "request": {
+        "method": "GET",
+        "route": "/customers"
+      },
+      "outcome": {
+        "encoded": "x%26y%3Dz%23top",
+        "url": "https://api.entitler.dev/customers?q=x%26y%3Dz%23top"
+      }
+    },
+    {
+      "name": "query-slash-and-question-mark",
+      "why": "Slashes and question marks are encoded in query values too.",
+      "kind": "query",
+      "parameter": "q",
+      "value": "a/b?c",
+      "request": {
+        "method": "GET",
+        "route": "/customers"
+      },
+      "outcome": {
+        "encoded": "a%2Fb%3Fc",
+        "url": "https://api.entitler.dev/customers?q=a%2Fb%3Fc"
+      }
+    },
+    {
+      "name": "query-non-ascii",
+      "why": "Non-ASCII characters in a query value are encoded as UTF-8 bytes.",
+      "kind": "query",
+      "parameter": "q",
+      "value": "José",
+      "request": {
+        "method": "GET",
+        "route": "/customers"
+      },
+      "outcome": {
+        "encoded": "Jos%C3%A9",
+        "url": "https://api.entitler.dev/customers?q=Jos%C3%A9"
+      }
+    },
+    {
+      "name": "query-unreserved",
+      "why": "Unreserved characters stay as they are in query values.",
+      "kind": "query",
+      "parameter": "q",
+      "value": "AZaz09-_.!~*()",
+      "request": {
+        "method": "GET",
+        "route": "/customers"
+      },
+      "outcome": {
+        "encoded": "AZaz09-_.!~*()",
+        "url": "https://api.entitler.dev/customers?q=AZaz09-_.!~*()"
+      }
+    },
+    {
+      "name": "query-lone-high-surrogate",
+      "why": "A query value ending in a lone high surrogate is not valid Unicode, so it is refused before any request.",
+      "kind": "query",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "q",
+      "valueUtf16": [
+        112,
+        114,
+        111,
+        55296
+      ],
+      "request": {
+        "method": "GET",
+        "route": "/customers"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "query-lone-low-surrogate",
+      "why": "A query value starting with a lone low surrogate is refused too.",
+      "kind": "query",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "q",
+      "valueUtf16": [
+        56320,
+        113
+      ],
+      "request": {
+        "method": "GET",
+        "route": "/customers"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "single-dot-as-add-on",
+      "why": "The dots rule applies to the add-on cancel({ addOn }) names.",
+      "kind": "segment",
+      "parameter": "addOn",
+      "id": ".",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/subscription/add-ons/{addOn}",
+        "params": {
+          "id": "user_42",
+          "addOn": "."
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "blank-add-on",
+      "why": "cancel({ addOn: \"\" }) fails as a blank add-on, never falling back to cancelling the plan.",
+      "kind": "segment",
+      "parameter": "addOn",
+      "id": "",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/subscription/add-ons/{addOn}",
+        "params": {
+          "id": "user_42",
+          "addOn": ""
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Name the plan by its id or its key."
+      }
+    },
+    {
+      "name": "blank-add-on-tab",
+      "why": "An add-on of only a tab is blank and fails with the add-on's own message.",
+      "kind": "segment",
+      "parameter": "addOn",
+      "id": "\t",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/subscription/add-ons/{addOn}",
+        "params": {
+          "id": "user_42",
+          "addOn": "\t"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Name the plan by its id or its key."
+      }
+    },
+    {
+      "name": "lone-surrogate-as-add-on",
+      "why": "The Unicode rule applies to the add-on parameter.",
+      "kind": "segment",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "addOn",
+      "idUtf16": [
+        55356
+      ],
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/subscription/add-ons/{addOn}",
+        "params": {
+          "id": "user_42"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "slash-in-add-on-to-undo",
+      "why": "undoPendingChange({ addOn }) encodes the add-on as one segment.",
+      "kind": "segment",
+      "parameter": "addOn",
+      "id": "addon/eu",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/subscription/add-ons/{addOn}/pending",
+        "params": {
+          "id": "user_42",
+          "addOn": "addon/eu"
+        }
+      },
+      "outcome": {
+        "segment": "addon%2Feu",
+        "url": "https://api.entitler.dev/customers/user_42/subscription/add-ons/addon%2Feu/pending"
+      }
+    },
+    {
+      "name": "two-dots-as-add-on-to-set",
+      "why": "The dots rule applies to setAddOn's add-on.",
+      "kind": "segment",
+      "parameter": "addOn",
+      "id": "..",
+      "request": {
+        "method": "PUT",
+        "route": "/customers/{id}/add-ons/{addOn}",
+        "params": {
+          "id": "user_42",
+          "addOn": ".."
+        },
+        "options": {
+          "quantity": 1
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "blank-add-on-to-set",
+      "why": "A blank add-on given to setAddOn fails with the add-on's own message.",
+      "kind": "segment",
+      "parameter": "addOn",
+      "id": " ",
+      "request": {
+        "method": "PUT",
+        "route": "/customers/{id}/add-ons/{addOn}",
+        "params": {
+          "id": "user_42",
+          "addOn": " "
+        },
+        "options": {
+          "quantity": 1
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Name the plan by its id or its key."
+      }
+    },
+    {
+      "name": "lone-surrogate-as-add-on-to-set",
+      "why": "The Unicode rule applies to setAddOn's add-on.",
+      "kind": "segment",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "addOn",
+      "idUtf16": [
+        97,
+        56320
+      ],
+      "request": {
+        "method": "PUT",
+        "route": "/customers/{id}/add-ons/{addOn}",
+        "params": {
+          "id": "user_42"
+        },
+        "options": {
+          "quantity": 1
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "slash-in-add-on-to-set",
+      "why": "setAddOn encodes a slash in the add-on, so it stays one segment.",
+      "kind": "segment",
+      "parameter": "addOn",
+      "id": "seats/eu",
+      "request": {
+        "method": "PUT",
+        "route": "/customers/{id}/add-ons/{addOn}",
+        "params": {
+          "id": "user_42",
+          "addOn": "seats/eu"
+        },
+        "options": {
+          "quantity": 1
+        }
+      },
+      "outcome": {
+        "segment": "seats%2Feu",
+        "url": "https://api.entitler.dev/customers/user_42/add-ons/seats%2Feu"
+      }
+    },
+    {
+      "name": "two-dots-as-feature-to-adjust",
+      "why": "The dots rule applies to adjustMeter's feature.",
+      "kind": "segment",
+      "parameter": "feature",
+      "id": "..",
+      "request": {
+        "method": "POST",
+        "route": "/customers/{id}/meters/{feature}/adjustments",
+        "params": {
+          "id": "user_42",
+          "feature": ".."
+        },
+        "options": {
+          "by": 1,
+          "idempotencyKey": "adjust-path-0001"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "slash-in-feature-to-adjust",
+      "why": "adjustMeter encodes the feature key as one segment.",
+      "kind": "segment",
+      "parameter": "feature",
+      "id": "ai/credits",
+      "request": {
+        "method": "POST",
+        "route": "/customers/{id}/meters/{feature}/adjustments",
+        "params": {
+          "id": "user_42",
+          "feature": "ai/credits"
+        },
+        "options": {
+          "by": 1,
+          "idempotencyKey": "adjust-path-0001"
+        }
+      },
+      "outcome": {
+        "segment": "ai%2Fcredits",
+        "url": "https://api.entitler.dev/customers/user_42/meters/ai%2Fcredits/adjustments"
+      }
+    },
+    {
+      "name": "single-dot-as-hold-id-to-settle",
+      "why": "The dots rule applies to settleUsage's hold id.",
+      "kind": "segment",
+      "parameter": "holdId",
+      "id": ".",
+      "request": {
+        "method": "POST",
+        "route": "/customers/{id}/usage/holds/{holdId}/settle",
+        "params": {
+          "id": "user_42",
+          "holdId": "."
+        },
+        "options": {
+          "amount": 1
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "blank-hold-id-to-settle",
+      "why": "A hold id of only a space fails settleUsage with the hold's own message.",
+      "kind": "segment",
+      "parameter": "holdId",
+      "id": " ",
+      "request": {
+        "method": "POST",
+        "route": "/customers/{id}/usage/holds/{holdId}/settle",
+        "params": {
+          "id": "user_42",
+          "holdId": " "
+        },
+        "options": {
+          "amount": 1
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the id of the hold."
+      }
+    },
+    {
+      "name": "slash-in-hold-id-to-settle",
+      "why": "settleUsage encodes a slash in the hold id, so it stays one segment.",
+      "kind": "segment",
+      "parameter": "holdId",
+      "id": "hold/1",
+      "request": {
+        "method": "POST",
+        "route": "/customers/{id}/usage/holds/{holdId}/settle",
+        "params": {
+          "id": "user_42",
+          "holdId": "hold/1"
+        },
+        "options": {
+          "amount": 1
+        }
+      },
+      "outcome": {
+        "segment": "hold%2F1",
+        "url": "https://api.entitler.dev/customers/user_42/usage/holds/hold%2F1/settle"
+      }
+    },
+    {
+      "name": "slash-in-customer-to-erase",
+      "why": "erase() encodes the customer id as one segment before ?erase=true.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "team/42",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}?erase=true",
+        "params": {
+          "id": "team/42"
+        }
+      },
+      "outcome": {
+        "segment": "team%2F42",
+        "url": "https://api.entitler.dev/customers/team%2F42?erase=true"
+      }
+    },
+    {
+      "name": "two-dots-as-customer-to-erase",
+      "why": "The dots rule applies to erase(), so a dots id never becomes a delete of another route.",
+      "kind": "segment",
+      "parameter": "customer",
+      "id": "..",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}?erase=true",
+        "params": {
+          "id": ".."
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is not made only of dots."
+      }
+    },
+    {
+      "name": "query-product-on-cancel",
+      "why": "cancel({ product }) sends the product as the query value product, encoded as encodeURIComponent does.",
+      "kind": "query",
+      "parameter": "product",
+      "value": "app/eu",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/subscription",
+        "params": {
+          "id": "user_42"
+        }
+      },
+      "outcome": {
+        "encoded": "app%2Feu",
+        "url": "https://api.entitler.dev/customers/user_42/subscription?product=app%2Feu"
+      }
+    },
+    {
+      "name": "query-product-on-undo",
+      "why": "undoPendingChange({ product }) encodes spaces, ampersands and non-ASCII characters in the product.",
+      "kind": "query",
+      "parameter": "product",
+      "value": "équipe & co",
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/subscription/pending",
+        "params": {
+          "id": "user_42"
+        }
+      },
+      "outcome": {
+        "encoded": "%C3%A9quipe%20%26%20co",
+        "url": "https://api.entitler.dev/customers/user_42/subscription/pending?product=%C3%A9quipe%20%26%20co"
+      }
+    },
+    {
+      "name": "query-lone-surrogate-in-product",
+      "why": "A product query value with a lone surrogate is not valid Unicode, so it is refused before any request.",
+      "kind": "query",
+      "appliesWhere": "strings can hold lone surrogates",
+      "parameter": "product",
+      "valueUtf16": [
+        97,
+        112,
+        112,
+        55357
+      ],
+      "request": {
+        "method": "DELETE",
+        "route": "/customers/{id}/subscription",
+        "params": {
+          "id": "user_42"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass an id that is valid Unicode."
+      }
+    },
+    {
+      "name": "query-cursor",
+      "why": "A cursor that starts customers.list at a page is a query value, so its plus, slash and equals signs are encoded.",
+      "kind": "query",
+      "parameter": "cursor",
+      "value": "c_42+next/page=2",
+      "request": {
+        "method": "GET",
+        "route": "/customers"
+      },
+      "outcome": {
+        "encoded": "c_42%2Bnext%2Fpage%3D2",
+        "url": "https://api.entitler.dev/customers?cursor=c_42%2Bnext%2Fpage%3D2"
+      }
+    },
+    {
+      "name": "cancel-add-on-and-product-refused",
+      "why": "cancel takes at most one of addOn and product, so both fail before any request.",
+      "kind": "arguments",
+      "call": {
+        "method": "cancel",
+        "customer": "user_42",
+        "options": {
+          "addOn": "sso_addon",
+          "product": "app"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass either addOn or product, not both."
+      }
+    },
+    {
+      "name": "undo-add-on-and-product-refused",
+      "why": "undoPendingChange takes at most one of addOn and product, so both fail before any request.",
+      "kind": "arguments",
+      "call": {
+        "method": "undoPendingChange",
+        "customer": "user_42",
+        "options": {
+          "addOn": "sso_addon",
+          "product": "app"
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass either addOn or product, not both."
+      }
+    }
+  ]
+}

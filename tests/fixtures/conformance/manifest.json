@@ -1,0 +1,66 @@
+{
+  "description": "The Entitler SDK conformance suite. Each data file with its section of the specification, its number of cases and the SHA-256 of its bytes. Copy the files with this manifest and check every hash before running the cases.",
+  "spec": "12",
+  "files": [
+    {
+      "path": "cache-keys.json",
+      "spec": "7.3, 6.1, 6.6",
+      "cases": 25,
+      "sha256": "fe5ec25afb338d2265415e0e94b6f2a46ffee395a5b015815a82871c43b263fd"
+    },
+    {
+      "path": "path-encoding.json",
+      "spec": "6.1, 4.3, 5.2, 5.3, 5.4, 5.5",
+      "cases": 85,
+      "sha256": "c720c48d18fb10576f756ea8152821b1818c109274ddaa4f132d9b8cf15bc9c3"
+    },
+    {
+      "path": "idempotency-keys.json",
+      "spec": "7.2, 5.2, 5.5",
+      "cases": 90,
+      "sha256": "b7501d673bd58b1cd75c47a1609dc8f9bdca1c18c197ac8e41a4df88336d2ae7"
+    },
+    {
+      "path": "retry-timing.json",
+      "spec": "7.2, 7.5, 3.5",
+      "cases": 75,
+      "sha256": "4a997670ad65c1bd7175ff71bb9997575516bbf2f130843e1c06f749eaddf3d9"
+    },
+    {
+      "path": "token-refresh.json",
+      "spec": "7.5, 4.3, 4.4",
+      "cases": 51,
+      "sha256": "49602a4b2b00cf2d50a211b7d1cf61c85df9c59105ff866637b11d078a810c06"
+    },
+    {
+      "path": "construction.json",
+      "spec": "4.3, 4.2, 3.5",
+      "cases": 41,
+      "sha256": "50b3050834f24940fa4c99499ad0930c8dbfd6d1833fcc4a31c19f2c113f8cb7"
+    },
+    {
+      "path": "values.json",
+      "spec": "6.2, 8",
+      "cases": 36,
+      "sha256": "2d9ee810d4ea3a367e74a4d1548923f4cecd50f6829e3777fd0286f5bc39c1a0"
+    },
+    {
+      "path": "answers.json",
+      "spec": "5.1, 5.2, 5.4, 5.5, 6.2, 7.2",
+      "cases": 54,
+      "sha256": "57eaf98f678e9773e7eac03af9ed85be1777f0092e87bcb8a5554221fe1b923d"
+    },
+    {
+      "path": "errors.json",
+      "spec": "8, 3.5, 4.2, 5.4, 5.5, 6.2, 6.6, 7.2, 7.3",
+      "cases": 63,
+      "sha256": "0eb0c84b14c658d8395ab1a79c2f09838945534d1ad0f3bb6e414b551d508eb1"
+    },
+    {
+      "path": "snapshots.json",
+      "spec": "9, 3.1, 6.2, 8",
+      "cases": 125,
+      "sha256": "1153f7507a00b1757d4dd02e00e2ebf47412af9dbac14db2df03a85f30e43c1d"
+    }
+  ]
+}

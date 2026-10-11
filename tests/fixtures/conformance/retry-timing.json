@@ -1,0 +1,2308 @@
+{
+  "description": "Retry timing and attempt counts (sections 7.2, 7.5 and 3.5), run with the fake transport and fake clock, every wait in seconds. retryAfter cases answer a 503 carrying retryAfter (null for no header), then a 200, at now with maxRetryDelay: the SDK waits exactly seconds (wait), waits a random time within retry 0's backoff bounds (backoff), or fails at once with the 503's ApiError (fail). backoff cases give the full-jitter bounds before retry n, counted from 0, and limits the most attempts a call makes. attempts cases build the client credential names (a server key, a fixed customer token, or a token provider answering tokens in order, each valid for an hour from now), make request with the transport giving answers in order, and compare the attempts made, the provider's calls, the bounds of each wait between attempts and the result. A GET request is check(feature) on the customer its path names (me on the in-app client); the POST request is recordUsage(body.feature, body.amount, { idempotencyKey }) with the request's idempotencyKey. An answer is { status, headers?, body? }, where body is JSON and an answer without one has an empty body, or a failure: connection (no answer arrives), timeout (the attempt runs past its timeout) or cut-off (the transport sends a 200's status, its Content-Type application/json header and the first part of a JSON body, then fails the body read with its own I/O or connection error, which is a ConnectionError and retried like one; a complete body that is not valid JSON is a different failure, invalid_response, never retried).",
+  "spec": "7.2, 7.5, 3.5",
+  "cases": [
+    {
+      "name": "absent",
+      "why": "Without Retry-After the SDK waits a random backoff.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": null,
+      "outcome": {
+        "action": "backoff"
+      }
+    },
+    {
+      "name": "whole-seconds",
+      "why": "Whole seconds are waited exactly.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "5",
+      "outcome": {
+        "action": "wait",
+        "seconds": 5
+      }
+    },
+    {
+      "name": "zero-seconds",
+      "why": "Zero means retry at once.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "0",
+      "outcome": {
+        "action": "wait",
+        "seconds": 0
+      }
+    },
+    {
+      "name": "one-second",
+      "why": "One second is waited exactly.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "1",
+      "outcome": {
+        "action": "wait",
+        "seconds": 1
+      }
+    },
+    {
+      "name": "at-max-retry-delay",
+      "why": "A wait equal to maxRetryDelay is still waited.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "10",
+      "outcome": {
+        "action": "wait",
+        "seconds": 10
+      }
+    },
+    {
+      "name": "above-max-retry-delay",
+      "why": "A wait longer than maxRetryDelay is not retried; the call fails at once.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "11",
+      "outcome": {
+        "action": "fail"
+      }
+    },
+    {
+      "name": "far-above-max-retry-delay",
+      "why": "An hour is far beyond maxRetryDelay, so the call fails at once.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "3600",
+      "outcome": {
+        "action": "fail"
+      }
+    },
+    {
+      "name": "beyond-64-bit-integers",
+      "why": "Seconds too large for a 64-bit integer still ask for longer than maxRetryDelay, so the call fails at once.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "99999999999999999999",
+      "outcome": {
+        "action": "fail"
+      }
+    },
+    {
+      "name": "leading-zeros",
+      "why": "Delay-seconds are one or more ASCII digits, so 007 waits seven seconds.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "007",
+      "outcome": {
+        "action": "wait",
+        "seconds": 7
+      }
+    },
+    {
+      "name": "only-zeros",
+      "why": "Several zeros are still digits, so 000 retries at once.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "000",
+      "outcome": {
+        "action": "wait",
+        "seconds": 0
+      }
+    },
+    {
+      "name": "empty",
+      "why": "An empty value is neither seconds nor a date, so it is ignored and the SDK backs off as if it were absent.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "",
+      "outcome": {
+        "action": "backoff"
+      }
+    },
+    {
+      "name": "negative-seconds",
+      "why": "A minus sign is not a digit, so -5 is ignored and the SDK backs off as if it were absent.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "-5",
+      "outcome": {
+        "action": "backoff"
+      }
+    },
+    {
+      "name": "plus-sign",
+      "why": "A plus sign is not a digit, so +5 is ignored and the SDK backs off as if it were absent.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "+5",
+      "outcome": {
+        "action": "backoff"
+      }
+    },
+    {
+      "name": "plus-sign-above-max-retry-delay",
+      "why": "An ignored value never fails the call, even one that would read as longer than maxRetryDelay.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "+3600",
+      "outcome": {
+        "action": "backoff"
+      }
+    },
+    {
+      "name": "decimal-seconds",
+      "why": "A fraction is not delay-seconds, so 1.5 is ignored and the SDK backs off as if it were absent.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "1.5",
+      "outcome": {
+        "action": "backoff"
+      }
+    },
+    {
+      "name": "junk-word",
+      "why": "A word is neither seconds nor a date, so the SDK backs off.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "soon",
+      "outcome": {
+        "action": "backoff"
+      }
+    },
+    {
+      "name": "junk-seconds-with-unit",
+      "why": "Seconds with a unit are not delay-seconds, so the SDK backs off.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "5 seconds",
+      "outcome": {
+        "action": "backoff"
+      }
+    },
+    {
+      "name": "junk-truncated-date",
+      "why": "A date without its time is not an HTTP date, so the SDK backs off.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wed, 01 Jul 2026",
+      "outcome": {
+        "action": "backoff"
+      }
+    },
+    {
+      "name": "imf-fixdate-future",
+      "why": "An IMF-fixdate five seconds ahead waits five seconds.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wed, 01 Jul 2026 09:30:05 GMT",
+      "outcome": {
+        "action": "wait",
+        "seconds": 5
+      }
+    },
+    {
+      "name": "imf-fixdate-at-max-retry-delay",
+      "why": "A date exactly maxRetryDelay ahead is still waited.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wed, 01 Jul 2026 09:30:10 GMT",
+      "outcome": {
+        "action": "wait",
+        "seconds": 10
+      }
+    },
+    {
+      "name": "imf-fixdate-above-max-retry-delay",
+      "why": "A date a minute ahead is beyond maxRetryDelay, so the call fails at once.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wed, 01 Jul 2026 09:31:00 GMT",
+      "outcome": {
+        "action": "fail"
+      }
+    },
+    {
+      "name": "imf-fixdate-now",
+      "why": "A date equal to now waits nothing.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wed, 01 Jul 2026 09:30:00 GMT",
+      "outcome": {
+        "action": "wait",
+        "seconds": 0
+      }
+    },
+    {
+      "name": "imf-fixdate-past",
+      "why": "A date already passed waits nothing.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wed, 01 Jul 2026 09:29:30 GMT",
+      "outcome": {
+        "action": "wait",
+        "seconds": 0
+      }
+    },
+    {
+      "name": "rfc-850-future",
+      "why": "The obsolete RFC 850 form is an HTTP date that recipients accept.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wednesday, 01-Jul-26 09:30:07 GMT",
+      "outcome": {
+        "action": "wait",
+        "seconds": 7
+      }
+    },
+    {
+      "name": "rfc-850-past",
+      "why": "An RFC 850 date already passed waits nothing.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wednesday, 01-Jul-26 09:29:00 GMT",
+      "outcome": {
+        "action": "wait",
+        "seconds": 0
+      }
+    },
+    {
+      "name": "rfc-850-above-max-retry-delay",
+      "why": "An RFC 850 date a minute ahead is beyond maxRetryDelay, so the call fails at once.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wednesday, 01-Jul-26 09:31:00 GMT",
+      "outcome": {
+        "action": "fail"
+      }
+    },
+    {
+      "name": "asctime-future",
+      "why": "The obsolete asctime form, with a space-padded day, is an HTTP date that recipients accept.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wed Jul  1 09:30:03 2026",
+      "outcome": {
+        "action": "wait",
+        "seconds": 3
+      }
+    },
+    {
+      "name": "asctime-past",
+      "why": "An asctime date already passed waits nothing.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wed Jul  1 09:00:00 2026",
+      "outcome": {
+        "action": "wait",
+        "seconds": 0
+      }
+    },
+    {
+      "name": "asctime-above-max-retry-delay",
+      "why": "An asctime date five minutes ahead is beyond maxRetryDelay, so the call fails at once.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Wed Jul  1 09:35:00 2026",
+      "outcome": {
+        "action": "fail"
+      }
+    },
+    {
+      "name": "asctime-two-digit-day-past",
+      "why": "An asctime date with a two-digit day the day before waits nothing.",
+      "kind": "retryAfter",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetryDelay": 10,
+      "retryAfter": "Tue Jun 30 09:30:00 2026",
+      "outcome": {
+        "action": "wait",
+        "seconds": 0
+      }
+    },
+    {
+      "name": "backoff-retry-0",
+      "why": "Full jitter before retry 0 waits from 0 up to min(8, 0.5 × 2^0) seconds.",
+      "kind": "backoff",
+      "retry": 0,
+      "outcome": {
+        "minSeconds": 0,
+        "maxSeconds": 0.5
+      }
+    },
+    {
+      "name": "backoff-retry-1",
+      "why": "Full jitter before retry 1 waits from 0 up to min(8, 0.5 × 2^1) seconds.",
+      "kind": "backoff",
+      "retry": 1,
+      "outcome": {
+        "minSeconds": 0,
+        "maxSeconds": 1
+      }
+    },
+    {
+      "name": "backoff-retry-2",
+      "why": "Full jitter before retry 2 waits from 0 up to min(8, 0.5 × 2^2) seconds.",
+      "kind": "backoff",
+      "retry": 2,
+      "outcome": {
+        "minSeconds": 0,
+        "maxSeconds": 2
+      }
+    },
+    {
+      "name": "backoff-retry-3",
+      "why": "Full jitter before retry 3 waits from 0 up to min(8, 0.5 × 2^3) seconds.",
+      "kind": "backoff",
+      "retry": 3,
+      "outcome": {
+        "minSeconds": 0,
+        "maxSeconds": 4
+      }
+    },
+    {
+      "name": "backoff-retry-4",
+      "why": "Full jitter before retry 4 waits from 0 up to min(8, 0.5 × 2^4) seconds.",
+      "kind": "backoff",
+      "retry": 4,
+      "outcome": {
+        "minSeconds": 0,
+        "maxSeconds": 8
+      }
+    },
+    {
+      "name": "backoff-retry-5",
+      "why": "Full jitter before retry 5 waits from 0 up to min(8, 0.5 × 2^5) seconds.",
+      "kind": "backoff",
+      "retry": 5,
+      "outcome": {
+        "minSeconds": 0,
+        "maxSeconds": 8
+      }
+    },
+    {
+      "name": "attempt-limits",
+      "why": "maxRetries 2 allows three attempts for retried failures, plus the one retry after a 401.",
+      "kind": "limits",
+      "maxRetries": 2,
+      "outcome": {
+        "maxAttemptsWithoutUnauthorised": 3,
+        "maxAttempts": 4
+      }
+    },
+    {
+      "name": "retries-exhausted",
+      "why": "Two retries after the first attempt, then the last error.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "kind": "ApiError",
+          "status": 503,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "retries-then-success",
+      "why": "A success on the last allowed attempt answers it.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 500
+        },
+        {
+          "status": 502
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "every-retried-status",
+      "why": "408, 429 and 504 are retried and share one budget.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 408
+        },
+        {
+          "status": 429
+        },
+        {
+          "status": 504
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "kind": "ApiError",
+          "status": 504,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "connection-and-timeout",
+      "why": "Connection failures and timeouts are retried.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "failure": "connection"
+        },
+        {
+          "failure": "timeout"
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "timeouts-exhausted",
+      "why": "The last attempt's failure is the error.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "failure": "timeout"
+        },
+        {
+          "failure": "timeout"
+        },
+        {
+          "failure": "timeout"
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "kind": "TimeoutError"
+        }
+      }
+    },
+    {
+      "name": "not-retried-400",
+      "why": "400 is never retried.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 400
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 400,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "not-retried-404",
+      "why": "404 is never retried.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 404
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 404,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "not-retried-409",
+      "why": "409 is never retried.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 409
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 409,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "not-retried-422",
+      "why": "422 is never retried.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 422
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 422,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "not-retried-501",
+      "why": "501 is not in the retried list.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 501
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 501,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "not-retried-505",
+      "why": "505 is not in the retried list.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 505
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 505,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "redirect-not-followed",
+      "why": "A redirect is neither followed nor retried; it is an http_error.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 307,
+          "headers": {
+            "Location": "https://elsewhere.example.com/"
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 307,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "server-key-401-not-retried",
+      "why": "A server key cannot be refreshed, so a 401 fails at once.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 401
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 401,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "fixed-token-401-not-retried",
+      "why": "A fixed customer token cannot be refreshed, so a 401 fails at once.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerToken",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 401
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 401,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "provider-401-retried-once",
+      "why": "A 401 asks the provider again and retries once.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 401
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 2,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "provider-401-twice",
+      "why": "Only one retry follows a 401; a second 401 fails.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 401
+        },
+        {
+          "status": 401
+        }
+      ],
+      "outcome": {
+        "attempts": 2,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          }
+        ],
+        "result": {
+          "kind": "ApiError",
+          "status": 401,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "provider-503-401-200",
+      "why": "A retried failure then a 401 then success.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503
+        },
+        {
+          "status": 401
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "provider-most-attempts",
+      "why": "The 401 retry is outside the budget, so maxRetries 2 allows four attempts.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503
+        },
+        {
+          "status": 401
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        }
+      ],
+      "outcome": {
+        "attempts": 4,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "kind": "ApiError",
+          "status": 503,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "provider-401-after-budget",
+      "why": "A 401 after the budget is spent still has its one retry.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 401
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 4,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "provider-budget-spent-before-401",
+      "why": "The call fails once the budget is spent, before any later 401.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 401
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "providerCalls": 1,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "kind": "ApiError",
+          "status": 503,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "provider-403-credential-not-allowed",
+      "why": "403 credential_not_allowed is never retried or refreshed.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 403,
+          "body": {
+            "error": {
+              "code": "credential_not_allowed",
+              "message": "This route does not take this kind of credential."
+            }
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "providerCalls": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 403,
+          "code": "credential_not_allowed"
+        }
+      }
+    },
+    {
+      "name": "no-retries-allowed",
+      "why": "maxRetries 0 makes one attempt.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 0,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 503,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "no-retries-401-still-retried",
+      "why": "maxRetries 0 still allows the retry after a 401.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 0,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 401
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 2,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "no-retries-most-attempts",
+      "why": "maxRetries 0 allows at most two attempts.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 0,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 401
+        },
+        {
+          "status": 503
+        }
+      ],
+      "outcome": {
+        "attempts": 2,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          }
+        ],
+        "result": {
+          "kind": "ApiError",
+          "status": 503,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "retry-after-above-max-not-retried",
+      "why": "A Retry-After beyond maxRetryDelay fails at once.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503,
+          "headers": {
+            "Retry-After": "11"
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 1,
+        "waits": [],
+        "result": {
+          "kind": "ApiError",
+          "status": 503,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "retry-after-within-max-retried",
+      "why": "A Retry-After within maxRetryDelay is waited, then retried.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 429,
+          "headers": {
+            "Retry-After": "1"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 2,
+        "waits": [
+          {
+            "minSeconds": 1,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "write-retries-exhausted",
+      "why": "Writes are retried like reads, every attempt with the same Idempotency-Key, which the error carries.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/customers/user_42/usage",
+        "body": {
+          "feature": "ai_credits",
+          "amount": 1
+        },
+        "idempotencyKey": "usage-2026-07-01-0042"
+      },
+      "answers": [
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "kind": "ApiError",
+          "status": 503,
+          "code": "http_error"
+        },
+        "sameIdempotencyKeyOnEveryAttempt": true,
+        "errorCarriesIdempotencyKey": true
+      }
+    },
+    {
+      "name": "provider-401-then-503s",
+      "why": "The retry after a 401 goes at once and uses neither the budget nor a backoff step, so the next waits are retries 0 and 1.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 401
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        }
+      ],
+      "outcome": {
+        "attempts": 4,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "kind": "ApiError",
+          "status": 503,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "provider-401-then-503s-then-success",
+      "why": "After the immediate retry for a 401, both budgeted retries remain and back off from retry 0.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 401
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 4,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "provider-401-between-backoffs",
+      "why": "A 401 between backoffs goes at once and does not advance n, so the waits after it are retries 1 and 2.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 3,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503
+        },
+        {
+          "status": 401
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        }
+      ],
+      "outcome": {
+        "attempts": 5,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 2
+          }
+        ],
+        "result": {
+          "kind": "ApiError",
+          "status": 503,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "provider-401-then-retry-after",
+      "why": "The retry after a 401 goes at once, and a later Retry-After is waited exactly.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "customerTokenProvider",
+        "tokens": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-one",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-provider-token-two"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/me/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 401
+        },
+        {
+          "status": 503,
+          "headers": {
+            "Retry-After": "2"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "providerCalls": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          },
+          {
+            "minSeconds": 2,
+            "maxSeconds": 2
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "retry-after-then-backoff",
+      "why": "A retry that waited for Retry-After is still retry 0, so the next backoff is retry 1's.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503,
+          "headers": {
+            "Retry-After": "1"
+          }
+        },
+        {
+          "status": 503
+        },
+        {
+          "status": 503
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "waits": [
+          {
+            "minSeconds": 1,
+            "maxSeconds": 1
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "kind": "ApiError",
+          "status": 503,
+          "code": "http_error"
+        }
+      }
+    },
+    {
+      "name": "retry-after-leading-zeros-waited",
+      "why": "Retry-After 007 is seven seconds, waited exactly.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 429,
+          "headers": {
+            "Retry-After": "007"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 2,
+        "waits": [
+          {
+            "minSeconds": 7,
+            "maxSeconds": 7
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "retry-after-negative-ignored",
+      "why": "An unreadable Retry-After is ignored, so the retry backs off as retry 0.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503,
+          "headers": {
+            "Retry-After": "-5"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "retry-after-plus-sign-ignored",
+      "why": "An unreadable Retry-After never fails the call; the retry backs off as if it were absent.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503,
+          "headers": {
+            "Retry-After": "+3600"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "retry-after-past-date-retried-at-once",
+      "why": "A Retry-After date already passed waits nothing.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "status": 503,
+          "headers": {
+            "Retry-After": "Wed, 01 Jul 2026 09:29:30 GMT"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "answer-cut-off-retried",
+      "why": "An answer cut off while it is read is a ConnectionError, so it is retried like one.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "failure": "cut-off"
+        },
+        {
+          "status": 200,
+          "body": {
+            "customer": "user_42",
+            "asOf": "2026-07-01T09:30:00.000Z",
+            "feature": "export_pdf",
+            "type": "boolean",
+            "entitled": true,
+            "value": true,
+            "sources": [],
+            "upgrades": [],
+            "environment": {
+              "id": "env_conformance_test",
+              "name": "Development",
+              "kind": "test"
+            },
+            "track": {
+              "id": "trk_all_customers",
+              "name": "All customers"
+            },
+            "release": 2,
+            "change": null,
+            "testers": true,
+            "experiment": null
+          }
+        }
+      ],
+      "outcome": {
+        "attempts": 2,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          }
+        ],
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "name": "answers-cut-off-exhausted",
+      "why": "Answers cut off on every attempt spend the retries and fail with the last ConnectionError.",
+      "kind": "attempts",
+      "now": "2026-07-01T09:30:00.000Z",
+      "maxRetries": 2,
+      "maxRetryDelay": 10,
+      "credential": {
+        "kind": "key",
+        "key": "ent_test_conformance_server_key"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/customers/user_42/entitlements/export_pdf"
+      },
+      "answers": [
+        {
+          "failure": "cut-off"
+        },
+        {
+          "failure": "cut-off"
+        },
+        {
+          "failure": "cut-off"
+        }
+      ],
+      "outcome": {
+        "attempts": 3,
+        "waits": [
+          {
+            "minSeconds": 0,
+            "maxSeconds": 0.5
+          },
+          {
+            "minSeconds": 0,
+            "maxSeconds": 1
+          }
+        ],
+        "result": {
+          "kind": "ConnectionError"
+        }
+      }
+    }
+  ]
+}

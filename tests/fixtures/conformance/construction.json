@@ -1,0 +1,555 @@
+{
+  "description": "Client construction (sections 4.3, 4.2 and 3.5). Build client, EntitlerServer or EntitlerClient, from credentials exactly as given, before any trimming: key, token and identityToken are strings, { \"provider\": true } stands for a token provider, which construction accepts as it is and never calls, and a credential the case leaves out is not given. cache, where present, is customStore: the client is also given a custom cache store. outcome is the exact argument error construction raises, as the language's argument error, or { \"valid\": true } when construction succeeds, with stringFormOmits listing the credentials, as trimmed, that the client's string form (its toString, repr, Debug or description) must not contain. Construction checks the combination of credentials first, then blank values (the key before the identity token), then the key's kind, then an in-app client's custom store, so a blank key given to EntitlerClient fails as blank. Messages change only as section 3.1 allows, and in Create the client with { token }, { key, identityToken } or { key }. only the braces follow the language's syntax. A case with appliesWhere runs only where that holds: where separate constructors or types make a combination of credentials, or a custom store on the in-app client, impossible to write, those cases do not apply.",
+  "spec": "4.3, 4.2, 3.5",
+  "cases": [
+    {
+      "name": "server-secret-key",
+      "why": "A secret test key builds the server client, and its string form never shows the key.",
+      "client": "EntitlerServer",
+      "credentials": {
+        "key": "ent_test_conformance_server_key"
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": [
+          "ent_test_conformance_server_key"
+        ]
+      }
+    },
+    {
+      "name": "server-live-secret-key",
+      "why": "A secret live key builds the server client: every key not starting ent_pk_ is secret.",
+      "client": "EntitlerServer",
+      "credentials": {
+        "key": "ent_live_conformance_server_key"
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": [
+          "ent_live_conformance_server_key"
+        ]
+      }
+    },
+    {
+      "name": "server-secret-key-with-surrounding-whitespace",
+      "why": "A secret key with surrounding spaces, a tab and a line break is trimmed and builds the server client.",
+      "client": "EntitlerServer",
+      "credentials": {
+        "key": " \tent_test_conformance_server_key\r\n"
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": [
+          "ent_test_conformance_server_key"
+        ]
+      }
+    },
+    {
+      "name": "server-publishable-test-key",
+      "why": "A publishable test key given to EntitlerServer is refused, so it never stands in for a secret key.",
+      "client": "EntitlerServer",
+      "credentials": {
+        "key": "ent_pk_test_conformance_publishable_key"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "A publishable key belongs in EntitlerClient. Use a secret key from the dashboard on your server."
+      }
+    },
+    {
+      "name": "server-publishable-live-key",
+      "why": "A publishable live key given to EntitlerServer is refused with the same message.",
+      "client": "EntitlerServer",
+      "credentials": {
+        "key": "ent_pk_live_conformance_publishable_key"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "A publishable key belongs in EntitlerClient. Use a secret key from the dashboard on your server."
+      }
+    },
+    {
+      "name": "server-publishable-key-with-surrounding-whitespace",
+      "why": "The key is trimmed before its kind is read, so a publishable key with surrounding whitespace is still refused.",
+      "client": "EntitlerServer",
+      "credentials": {
+        "key": " ent_pk_test_conformance_publishable_key\n"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "A publishable key belongs in EntitlerClient. Use a secret key from the dashboard on your server."
+      }
+    },
+    {
+      "name": "server-blank-key",
+      "why": "An empty key is blank.",
+      "client": "EntitlerServer",
+      "credentials": {
+        "key": ""
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide an Entitler API key from the dashboard."
+      }
+    },
+    {
+      "name": "server-whitespace-key",
+      "why": "A key of a space, a tab, a carriage return and a line feed trims to nothing, so it is blank.",
+      "client": "EntitlerServer",
+      "credentials": {
+        "key": " \t\r\n"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide an Entitler API key from the dashboard."
+      }
+    },
+    {
+      "name": "client-publishable-key",
+      "why": "A publishable test key alone builds the key-only in-app client for signed-out pricing.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_pk_test_conformance_publishable_key"
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": [
+          "ent_pk_test_conformance_publishable_key"
+        ]
+      }
+    },
+    {
+      "name": "client-publishable-live-key",
+      "why": "A publishable live key alone builds the key-only in-app client.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_pk_live_conformance_publishable_key"
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": [
+          "ent_pk_live_conformance_publishable_key"
+        ]
+      }
+    },
+    {
+      "name": "client-publishable-key-with-surrounding-whitespace",
+      "why": "A publishable key with surrounding whitespace is trimmed before its kind is read, so it builds the client.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "\tent_pk_test_conformance_publishable_key \r\n"
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": [
+          "ent_pk_test_conformance_publishable_key"
+        ]
+      }
+    },
+    {
+      "name": "client-secret-key",
+      "why": "A secret test key given to EntitlerClient is refused, so a server key pasted into an app fails at once.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_test_conformance_server_key"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "A secret key belongs on your server, in EntitlerServer. Use a publishable key (ent_pk_…) in an app."
+      }
+    },
+    {
+      "name": "client-live-secret-key",
+      "why": "A secret live key given to EntitlerClient is refused with the same message.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_live_conformance_server_key"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "A secret key belongs on your server, in EntitlerServer. Use a publishable key (ent_pk_…) in an app."
+      }
+    },
+    {
+      "name": "client-secret-key-with-surrounding-whitespace",
+      "why": "A secret key with surrounding whitespace is trimmed and still refused by EntitlerClient.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": " ent_test_conformance_server_key\n"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "A secret key belongs on your server, in EntitlerServer. Use a publishable key (ent_pk_…) in an app."
+      }
+    },
+    {
+      "name": "client-blank-key",
+      "why": "Blank values are checked before the key's kind, so an empty key given to EntitlerClient fails as blank, not as a secret key.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": ""
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide an Entitler API key from the dashboard."
+      }
+    },
+    {
+      "name": "client-whitespace-key",
+      "why": "A key of spaces given to EntitlerClient is blank, not a secret key.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "   "
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide an Entitler API key from the dashboard."
+      }
+    },
+    {
+      "name": "client-publishable-key-and-identity-token",
+      "why": "A publishable key and an identity token build the identity in-app client, whose string form shows neither.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_pk_test_conformance_publishable_key",
+        "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one"
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": [
+          "ent_pk_test_conformance_publishable_key",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one"
+        ]
+      }
+    },
+    {
+      "name": "client-publishable-key-and-identity-token-provider",
+      "why": "A publishable key and an identity token provider build the identity in-app client without calling the provider.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_pk_test_conformance_publishable_key",
+        "identityToken": {
+          "provider": true
+        }
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": [
+          "ent_pk_test_conformance_publishable_key"
+        ]
+      }
+    },
+    {
+      "name": "client-secret-key-and-identity-token",
+      "why": "A secret key beside an identity token is refused, since an identity token goes only with a publishable key.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_test_conformance_server_key",
+        "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "A secret key belongs on your server, in EntitlerServer. Use a publishable key (ent_pk_…) in an app."
+      }
+    },
+    {
+      "name": "client-secret-key-and-identity-token-provider",
+      "why": "A secret key beside an identity token provider is refused as a secret key, and the provider is never called.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_test_conformance_server_key",
+        "identityToken": {
+          "provider": true
+        }
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "A secret key belongs on your server, in EntitlerServer. Use a publishable key (ent_pk_…) in an app."
+      }
+    },
+    {
+      "name": "client-blank-key-and-identity-token",
+      "why": "A blank key beside an identity token fails as a blank key.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "",
+        "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide an Entitler API key from the dashboard."
+      }
+    },
+    {
+      "name": "client-publishable-key-and-blank-identity-token",
+      "why": "An identity token that trims to nothing fails with the identity token's own message.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_pk_test_conformance_publishable_key",
+        "identityToken": " \n"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the identity token your sign-in provider issued."
+      }
+    },
+    {
+      "name": "client-secret-key-and-blank-identity-token",
+      "why": "Blank values are checked before the key's kind, so a blank identity token beside a secret key fails as blank.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_test_conformance_server_key",
+        "identityToken": ""
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the identity token your sign-in provider issued."
+      }
+    },
+    {
+      "name": "client-token",
+      "why": "A customer token builds the token in-app client, whose string form never shows the token.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one"
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one"
+        ]
+      }
+    },
+    {
+      "name": "client-token-provider",
+      "why": "A customer token provider builds the token in-app client without calling the provider.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": {
+          "provider": true
+        }
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": []
+      }
+    },
+    {
+      "name": "client-token-with-surrounding-whitespace",
+      "why": "A customer token with a carriage return and line feed before it and a space after it is trimmed and builds the client.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": "\r\neyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one "
+      },
+      "outcome": {
+        "valid": true,
+        "stringFormOmits": [
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one"
+        ]
+      }
+    },
+    {
+      "name": "client-blank-token",
+      "why": "An empty customer token fails with the customer token's own message.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": ""
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide a customer token minted by your server."
+      }
+    },
+    {
+      "name": "client-whitespace-token",
+      "why": "A customer token that trims to nothing is blank.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": " \t\r\n"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide a customer token minted by your server."
+      }
+    },
+    {
+      "name": "client-no-credential",
+      "why": "An in-app client with no credential is refused with the combination message.",
+      "appliesWhere": "the in-app client can be built from no credential or from a combination section 4.2 does not list",
+      "client": "EntitlerClient",
+      "credentials": {},
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Create the client with { token }, { key, identityToken } or { key }."
+      }
+    },
+    {
+      "name": "client-token-and-key",
+      "why": "A customer token with a key is not a combination section 4.2 lists, so it is refused.",
+      "appliesWhere": "the in-app client can be built from no credential or from a combination section 4.2 does not list",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one",
+        "key": "ent_pk_test_conformance_publishable_key"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Create the client with { token }, { key, identityToken } or { key }."
+      }
+    },
+    {
+      "name": "client-token-and-identity-token",
+      "why": "A customer token with an identity token is not a combination section 4.2 lists.",
+      "appliesWhere": "the in-app client can be built from no credential or from a combination section 4.2 does not list",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one",
+        "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Create the client with { token }, { key, identityToken } or { key }."
+      }
+    },
+    {
+      "name": "client-identity-token-alone",
+      "why": "An identity token without a publishable key is not a combination section 4.2 lists.",
+      "appliesWhere": "the in-app client can be built from no credential or from a combination section 4.2 does not list",
+      "client": "EntitlerClient",
+      "credentials": {
+        "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Create the client with { token }, { key, identityToken } or { key }."
+      }
+    },
+    {
+      "name": "client-token-key-and-identity-token",
+      "why": "All three credentials together are not a combination section 4.2 lists.",
+      "appliesWhere": "the in-app client can be built from no credential or from a combination section 4.2 does not list",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one",
+        "key": "ent_pk_test_conformance_publishable_key",
+        "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Create the client with { token }, { key, identityToken } or { key }."
+      }
+    },
+    {
+      "name": "client-blank-token-and-blank-key",
+      "why": "The combination is checked before blank values, so a blank token beside a blank key fails with the combination message.",
+      "appliesWhere": "the in-app client can be built from no credential or from a combination section 4.2 does not list",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": "",
+        "key": ""
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Create the client with { token }, { key, identityToken } or { key }."
+      }
+    },
+    {
+      "name": "client-token-provider-and-secret-key",
+      "why": "The combination is checked before the key's kind, so a token provider beside a secret key fails with the combination message.",
+      "appliesWhere": "the in-app client can be built from no credential or from a combination section 4.2 does not list",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": {
+          "provider": true
+        },
+        "key": "ent_test_conformance_server_key"
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Create the client with { token }, { key, identityToken } or { key }."
+      }
+    },
+    {
+      "name": "client-token-with-custom-store",
+      "why": "In-app clients keep answers only in memory, so a custom cache store given with a valid customer token is refused.",
+      "appliesWhere": "the in-app client can be given a custom cache store",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one"
+      },
+      "cache": "customStore",
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "In-app clients keep answers in memory: pass a cache size, or turn the cache off."
+      }
+    },
+    {
+      "name": "client-publishable-key-with-custom-store",
+      "why": "The key-only in-app client refuses a custom cache store too.",
+      "appliesWhere": "the in-app client can be given a custom cache store",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_pk_test_conformance_publishable_key"
+      },
+      "cache": "customStore",
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "In-app clients keep answers in memory: pass a cache size, or turn the cache off."
+      }
+    },
+    {
+      "name": "client-blank-key-and-blank-identity-token",
+      "why": "Blank values are checked key first, so a blank key beside a blank identity token fails as a blank key.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "",
+        "identityToken": ""
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide an Entitler API key from the dashboard."
+      }
+    },
+    {
+      "name": "client-publishable-key-and-whitespace-identity-token",
+      "why": "An identity token of whitespace only is blank once trimmed.",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_pk_test_conformance_publishable_key",
+        "identityToken": " \t "
+      },
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide the identity token your sign-in provider issued."
+      }
+    },
+    {
+      "name": "client-secret-key-with-custom-store",
+      "why": "The key's kind is checked before the custom store, so a secret key with a custom store fails as a secret key.",
+      "appliesWhere": "the in-app client can be given a custom cache store",
+      "client": "EntitlerClient",
+      "credentials": {
+        "key": "ent_test_conformance_server_key"
+      },
+      "cache": "customStore",
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "A secret key belongs on your server, in EntitlerServer. Use a publishable key (ent_pk_…) in an app."
+      }
+    },
+    {
+      "name": "client-blank-token-with-custom-store",
+      "why": "Blank values are checked before the custom store, so a blank token with a custom store fails as blank.",
+      "appliesWhere": "the in-app client can be given a custom cache store",
+      "client": "EntitlerClient",
+      "credentials": {
+        "token": ""
+      },
+      "cache": "customStore",
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Provide a customer token minted by your server."
+      }
+    }
+  ]
+}

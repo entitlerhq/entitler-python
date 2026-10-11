@@ -1,0 +1,1605 @@
+{
+  "description": "Error decoding (sections 8 and 3.5): with a server client built from the key ent_test_conformance_server_key, maxRetries 0 and an empty cache, make call through a fake transport that answers status, headers and body, and compare the error raised with outcome. call is, on customer(customer), check(feature), given asOf when call holds it, recordUsage(feature, amount, { idempotencyKey }), subscribe(plan, { period, idempotencyKey }), setPlan(plan, { period, idempotencyKey }), or setPlan({ sku }, { until, idempotencyKey }) when call holds sku. When call holds client, it is instead register({ idempotencyKey }) on an in-app client built from client.key and client.identityToken, with maxRetries 0 and an empty cache. Periods are named by their keys. Header names are case-insensitive, and decoding never depends on Content-Type. retryAfterSeconds is in whole seconds, so languages using milliseconds or durations convert, and null when Retry-After is absent or does not read as section 7.2 says. For an HTTP date it is the time from receivedAt, the instant the answer arrives, to that date, 0 when the date has passed: receivedAt is given only on those cases, so set the fake clock to it before the call. code is a plain string when known and { \"unknown\": raw } otherwise, and payment is kept only on a 402 whose payment status is declined, requires_action, processing or pending.",
+  "spec": "8, 3.5, 4.2, 5.4, 5.5, 6.2, 6.6, 7.2, 7.3",
+  "cases": [
+    {
+      "name": "feature-not-found",
+      "why": "A JSON error body gives code and message, and x-request-id gives requestId.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "x-request-id": "5f0c6a52-3e1b-4c8e-9d2f-7a1b3c4d5e6f"
+      },
+      "body": "{\"error\":{\"code\":\"feature_not_found\",\"message\":\"No feature has the key export_pdf in this environment.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 404,
+        "code": "feature_not_found",
+        "message": "No feature has the key export_pdf in this environment.",
+        "requestId": "5f0c6a52-3e1b-4c8e-9d2f-7a1b3c4d5e6f",
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "customer-not-found-on-write",
+      "why": "An error from a write carries the idempotency key the request sent.",
+      "call": {
+        "method": "recordUsage",
+        "customer": "test_1001",
+        "feature": "ai_credits",
+        "amount": 1,
+        "idempotencyKey": "job-2026-07-01-0042"
+      },
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "x-request-id": "0b8e2d4f-6a1c-4e3b-8f5d-2c7a9e1b3d50"
+      },
+      "body": "{\"error\":{\"code\":\"customer_not_found\",\"message\":\"No customer has the id test_1001. Register them first.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 404,
+        "code": "customer_not_found",
+        "message": "No customer has the id test_1001. Register them first.",
+        "requestId": "0b8e2d4f-6a1c-4e3b-8f5d-2c7a9e1b3d50",
+        "retryAfterSeconds": null,
+        "idempotencyKey": "job-2026-07-01-0042",
+        "payment": null
+      }
+    },
+    {
+      "name": "unknown-code-kept",
+      "why": "A code the SDK does not know is kept as it is, never turned into another code or an error of its own.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 409,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"quota_frozen\",\"message\":\"This project's quota is frozen while its plan changes.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 409,
+        "code": {
+          "unknown": "quota_frozen"
+        },
+        "message": "This project's quota is frozen while its plan changes.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "return-url-required",
+      "why": "return_url_required, which subscribe answers before anything changes, is a known code.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "x-request-id": "1c3e5a7c-9e0f-4b2d-8c4e-6f7a8b9c0d1e"
+      },
+      "body": "{\"error\":{\"code\":\"return_url_required\",\"message\":\"This change opens the provider's page, so pass returnUrl.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 400,
+        "code": "return_url_required",
+        "message": "This change opens the provider's page, so pass returnUrl.",
+        "requestId": "1c3e5a7c-9e0f-4b2d-8c4e-6f7a8b9c0d1e",
+        "retryAfterSeconds": null,
+        "idempotencyKey": "upgrade-test_1001-pro-monthly",
+        "payment": null
+      }
+    },
+    {
+      "name": "not-self-serve",
+      "why": "not_self_serve, the refusal of a change outside the self-serve rules, is a known code.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 403,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"not_self_serve\",\"message\":\"That move is not one the customer can make alone.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 403,
+        "code": "not_self_serve",
+        "message": "That move is not one the customer can make alone.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "upgrade-test_1001-pro-monthly",
+        "payment": null
+      }
+    },
+    {
+      "name": "billed-elsewhere",
+      "why": "billed_elsewhere, which setPlan answers for a store SKU when Stripe already bills the product, is a known code, and the error keeps the idempotency key.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "sku": {
+          "connector": "apple",
+          "ids": {
+            "productId": "com.example.app.pro.monthly"
+          }
+        },
+        "until": "2026-08-01T09:30:00.000Z",
+        "idempotencyKey": "apple-transaction-2000000912345678"
+      },
+      "status": 409,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"billed_elsewhere\",\"message\":\"Stripe already bills this product for test_1001, so a store purchase cannot replace it.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 409,
+        "code": "billed_elsewhere",
+        "message": "Stripe already bills this product for test_1001, so a store purchase cannot replace it.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "apple-transaction-2000000912345678",
+        "payment": null
+      }
+    },
+    {
+      "name": "capability-required-for-as-of",
+      "why": "capability_required, which a read at another instant answers without the as_of capability, is a known code.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf",
+        "asOf": "2026-06-01T00:00:00.000Z"
+      },
+      "status": 409,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"capability_required\",\"message\":\"Reading at another instant needs the organisation's as_of capability.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 409,
+        "code": "capability_required",
+        "message": "Reading at another instant needs the organisation's as_of capability.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "registration-closed",
+      "why": "registration_closed, which an identity client's register() answers when the sign-in provider does not let people register themselves, is a known code.",
+      "call": {
+        "method": "register",
+        "client": {
+          "key": "ent_pk_test_conformance_publishable_key",
+          "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one"
+        },
+        "idempotencyKey": "sign-in-user-42-2026-07-01"
+      },
+      "status": 403,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"registration_closed\",\"message\":\"This sign-in provider does not let people register themselves.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 403,
+        "code": "registration_closed",
+        "message": "This sign-in provider does not let people register themselves.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "sign-in-user-42-2026-07-01",
+        "payment": null
+      }
+    },
+    {
+      "name": "unknown-fields-ignored",
+      "why": "Unknown fields inside error and beside it are ignored.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "x-request-id": "9a3c5e7f-1b2d-4f6a-8c0e-3d5f7a9b1c2e"
+      },
+      "body": "{\"error\":{\"code\":\"invalid_path\",\"message\":\"That path is not valid.\",\"hint\":\"Encode the feature key as one path segment.\",\"docs\":\"https://entitler.dev/docs/errors#invalid_path\"},\"trace\":{\"span\":\"c41f\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 400,
+        "code": "invalid_path",
+        "message": "That path is not valid.",
+        "requestId": "9a3c5e7f-1b2d-4f6a-8c0e-3d5f7a9b1c2e",
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "code-without-message",
+      "why": "A body with a good code and no message keeps the code and takes the default message.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"invalid_path\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 400,
+        "code": "invalid_path",
+        "message": "Entitler answered with HTTP 400.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "message-without-code",
+      "why": "A body with a message and no code keeps the message and takes the code http_error.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"message\":\"That path is not valid.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 400,
+        "code": "http_error",
+        "message": "That path is not valid.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "code-a-number",
+      "why": "An error.code that is not a string gives http_error, while a good message is still kept.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 404,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":404,\"message\":\"No feature has the key export_pdf in this environment.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 404,
+        "code": "http_error",
+        "message": "No feature has the key export_pdf in this environment.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "code-empty",
+      "why": "An empty error.code gives http_error, while a good message is still kept.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"\",\"message\":\"That path is not valid.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 400,
+        "code": "http_error",
+        "message": "That path is not valid.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "message-empty",
+      "why": "An empty error.message gives the default message, while a good code is still kept.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"invalid_path\",\"message\":\"\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 400,
+        "code": "invalid_path",
+        "message": "Entitler answered with HTTP 400.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "message-not-a-string",
+      "why": "An error.message that is not a string gives the default message, while a good code is still kept.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"invalid_path\",\"message\":{\"text\":\"That path is not valid.\"}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 400,
+        "code": "invalid_path",
+        "message": "Entitler answered with HTTP 400.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "json-error-body-as-text-plain",
+      "why": "Decoding never depends on Content-Type, so a JSON error body sent as text/plain still gives its code and message.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "body": "{\"error\":{\"code\":\"feature_not_found\",\"message\":\"No feature has the key export_pdf in this environment.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 404,
+        "code": "feature_not_found",
+        "message": "No feature has the key export_pdf in this environment.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "json-error-body-without-content-type",
+      "why": "A JSON error body with no Content-Type header still gives its code and message.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 403,
+      "headers": {},
+      "body": "{\"error\":{\"code\":\"scope_required\",\"message\":\"This key needs the entitlements:read scope.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 403,
+        "code": "scope_required",
+        "message": "This key needs the entitlements:read scope.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "html-bad-gateway",
+      "why": "A proxy's HTML error page is not JSON, so the code is http_error and the message the default.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 502,
+      "headers": {
+        "content-type": "text/html"
+      },
+      "body": "<html><head><title>502 Bad Gateway</title></head><body><h1>502 Bad Gateway</h1></body></html>",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 502,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 502.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "empty-internal-error",
+      "why": "An empty body gives http_error and the default message.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 500,
+      "headers": {},
+      "body": "",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 500,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 500.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "plain-text-unavailable",
+      "why": "A plain-text body gives http_error and the default message.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 503,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "body": "upstream connect error or disconnect/reset before headers",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 503,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 503.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "truncated-json-error-body",
+      "why": "An error body cut off mid-JSON gives http_error and the default message, not invalid_response, which is only for 2xx answers.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"invalid_pa",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 400,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 400.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "json-array-body",
+      "why": "A JSON body that is not an object has no error.code.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "[\"invalid_path\"]",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 400,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 400.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "error-member-a-string",
+      "why": "An error member that is a string has no code or message.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":\"invalid_path\"}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 400,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 400.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "json-null-body",
+      "why": "A JSON null body has no error.code.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 404,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "null",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 404,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 404.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "teapot-with-empty-body",
+      "why": "The default message names the status, whatever it is.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 418,
+      "headers": {},
+      "body": "",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 418,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 418.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "payment-requires-action",
+      "why": "A 402 from setPlan, which charges through the provider, with a payment whose status is requires_action carries the payment with its url.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "deal-8841-won"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json",
+        "x-request-id": "2e4a6c8e-0f1b-4d3c-9e5a-7b9d1f3a5c70"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The customer must confirm the payment before the plan changes.\",\"payment\":{\"status\":\"requires_action\",\"url\":\"https://pay.example.com/confirm/pi_conformance_requires_action\"}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The customer must confirm the payment before the plan changes.",
+        "requestId": "2e4a6c8e-0f1b-4d3c-9e5a-7b9d1f3a5c70",
+        "retryAfterSeconds": null,
+        "idempotencyKey": "deal-8841-won",
+        "payment": {
+          "status": "requires_action",
+          "url": "https://pay.example.com/confirm/pi_conformance_requires_action"
+        }
+      }
+    },
+    {
+      "name": "payment-declined-without-url",
+      "why": "A declined payment, subscribe's only 402, with a null url carries the payment with no url.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The card was declined. The customer keeps their plan.\",\"payment\":{\"status\":\"declined\",\"url\":null}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The card was declined. The customer keeps their plan.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "upgrade-test_1001-pro-monthly",
+        "payment": {
+          "status": "declined",
+          "url": null
+        }
+      }
+    },
+    {
+      "name": "payment-processing",
+      "why": "A 402 from setPlan with a payment whose status is processing keeps the payment, as one of the four known statuses.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "deal-8841-won"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The provider is still processing the payment.\",\"payment\":{\"status\":\"processing\",\"url\":null}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The provider is still processing the payment.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "deal-8841-won",
+        "payment": {
+          "status": "processing",
+          "url": null
+        }
+      }
+    },
+    {
+      "name": "payment-pending",
+      "why": "A 402 from setPlan with a payment whose status is pending keeps the payment, as one of the four known statuses.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "deal-8841-won"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The payment has not succeeded yet.\",\"payment\":{\"status\":\"pending\",\"url\":\"https://pay.example.com/invoice/in_conformance_pending\"}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The payment has not succeeded yet.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "deal-8841-won",
+        "payment": {
+          "status": "pending",
+          "url": "https://pay.example.com/invoice/in_conformance_pending"
+        }
+      }
+    },
+    {
+      "name": "payment-unknown-status-dropped",
+      "why": "A payment whose status is not declined, requires_action, processing or pending gives no payment, while code and message stay.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The payment has not succeeded yet.\",\"payment\":{\"status\":\"on_hold\",\"url\":null}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The payment has not succeeded yet.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "upgrade-test_1001-pro-monthly",
+        "payment": null
+      }
+    },
+    {
+      "name": "payment-with-unknown-field",
+      "why": "Unknown fields inside payment are ignored.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The card was declined. The customer keeps their plan.\",\"payment\":{\"status\":\"declined\",\"url\":null,\"declineCode\":\"insufficient_funds\"}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The card was declined. The customer keeps their plan.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "upgrade-test_1001-pro-monthly",
+        "payment": {
+          "status": "declined",
+          "url": null
+        }
+      }
+    },
+    {
+      "name": "payment-url-a-number",
+      "why": "A payment url that is not a string is none, while the payment and its status stay.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The card was declined. The customer keeps their plan.\",\"payment\":{\"status\":\"declined\",\"url\":42}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The card was declined. The customer keeps their plan.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "upgrade-test_1001-pro-monthly",
+        "payment": {
+          "status": "declined",
+          "url": null
+        }
+      }
+    },
+    {
+      "name": "payment-url-missing",
+      "why": "A payment without a url on a 402 from setPlan keeps its status, with no url.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "deal-8841-won"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The provider is still processing the payment.\",\"payment\":{\"status\":\"processing\"}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The provider is still processing the payment.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "deal-8841-won",
+        "payment": {
+          "status": "processing",
+          "url": null
+        }
+      }
+    },
+    {
+      "name": "payment-not-an-object",
+      "why": "A payment that is not an object is none, while code and message stay.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "deal-8841-won"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The payment has not succeeded yet.\",\"payment\":\"requires_action\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The payment has not succeeded yet.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "deal-8841-won",
+        "payment": null
+      }
+    },
+    {
+      "name": "payment-null",
+      "why": "A null payment is none, while code and message stay.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The payment has not succeeded yet.\",\"payment\":null}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The payment has not succeeded yet.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "upgrade-test_1001-pro-monthly",
+        "payment": null
+      }
+    },
+    {
+      "name": "payment-status-not-a-string",
+      "why": "A payment whose status is not a string has no known status, so it is none.",
+      "call": {
+        "method": "subscribe",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "upgrade-test_1001-pro-monthly"
+      },
+      "status": 402,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The payment has not succeeded yet.\",\"payment\":{\"status\":1,\"url\":null}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 402,
+        "code": "payment_required",
+        "message": "The payment has not succeeded yet.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "upgrade-test_1001-pro-monthly",
+        "payment": null
+      }
+    },
+    {
+      "name": "payment-on-a-non-402-status",
+      "why": "A payment is read only on a 402, so one on a 409 from setPlan is none, even with a known status and the payment_required code.",
+      "call": {
+        "method": "setPlan",
+        "customer": "test_1001",
+        "plan": "pro",
+        "period": "monthly",
+        "idempotencyKey": "deal-8841-won"
+      },
+      "status": 409,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"payment_required\",\"message\":\"The customer must confirm the payment before the plan changes.\",\"payment\":{\"status\":\"requires_action\",\"url\":\"https://pay.example.com/confirm/pi_conformance_requires_action\"}}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 409,
+        "code": "payment_required",
+        "message": "The customer must confirm the payment before the plan changes.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "deal-8841-won",
+        "payment": null
+      }
+    },
+    {
+      "name": "unavailable-with-retry-after",
+      "why": "Retry-After in seconds gives retryAfter.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 503,
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "120"
+      },
+      "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"Stripe is unreachable. Try again shortly.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 503,
+        "code": "unavailable",
+        "message": "Stripe is unreachable. Try again shortly.",
+        "requestId": null,
+        "retryAfterSeconds": 120,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "rate-limited-with-retry-after",
+      "why": "A 429 carries its code and its Retry-After.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 429,
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "5"
+      },
+      "body": "{\"error\":{\"code\":\"rate_limited\",\"message\":\"Too many requests. Try again in 5 seconds.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 429,
+        "code": "rate_limited",
+        "message": "Too many requests. Try again in 5 seconds.",
+        "requestId": null,
+        "retryAfterSeconds": 5,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "retry-after-zero",
+      "why": "Retry-After 0 gives a retryAfter of zero, not none.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 429,
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "0"
+      },
+      "body": "{\"error\":{\"code\":\"rate_limited\",\"message\":\"Too many requests. Try again now.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 429,
+        "code": "rate_limited",
+        "message": "Too many requests. Try again now.",
+        "requestId": null,
+        "retryAfterSeconds": 0,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "retry-after-negative",
+      "why": "A Retry-After of -5 is neither ASCII digits nor an HTTP date, so retryAfter is none.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 503,
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "-5"
+      },
+      "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"Stripe is unreachable. Try again shortly.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 503,
+        "code": "unavailable",
+        "message": "Stripe is unreachable. Try again shortly.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "retry-after-with-plus-sign",
+      "why": "A Retry-After of +5 carries a sign, so it is not ASCII digits and retryAfter is none.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 503,
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "+5"
+      },
+      "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"Stripe is unreachable. Try again shortly.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 503,
+        "code": "unavailable",
+        "message": "Stripe is unreachable. Try again shortly.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "retry-after-fraction",
+      "why": "A Retry-After of 1.5 is not whole ASCII digits, so retryAfter is none, never rounded.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 503,
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "1.5"
+      },
+      "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"Stripe is unreachable. Try again shortly.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 503,
+        "code": "unavailable",
+        "message": "Stripe is unreachable. Try again shortly.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "retry-after-word",
+      "why": "A Retry-After that is a word is ignored, so retryAfter is none.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 503,
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "soon"
+      },
+      "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"Stripe is unreachable. Try again shortly.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 503,
+        "code": "unavailable",
+        "message": "Stripe is unreachable. Try again shortly.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "retry-after-date-thirty-seconds-ahead",
+      "why": "A Retry-After HTTP date 30 seconds after the answer arrives gives a retryAfter of 30 seconds, measured from receipt.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 503,
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "Wed, 01 Jul 2026 09:30:30 GMT"
+      },
+      "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"Stripe is unreachable. Try again shortly.\"}}",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 503,
+        "code": "unavailable",
+        "message": "Stripe is unreachable. Try again shortly.",
+        "requestId": null,
+        "retryAfterSeconds": 30,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "retry-after-date-passed",
+      "why": "A Retry-After HTTP date that passed before the answer arrived gives a retryAfter of 0, never a negative duration.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 503,
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "Wed, 01 Jul 2026 09:29:00 GMT"
+      },
+      "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"Stripe is unreachable. Try again shortly.\"}}",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 503,
+        "code": "unavailable",
+        "message": "Stripe is unreachable. Try again shortly.",
+        "requestId": null,
+        "retryAfterSeconds": 0,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "request-id-header-in-mixed-case",
+      "why": "Header names are case-insensitive, so X-Request-Id gives requestId.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Request-Id": "7d9f1b3d-5e6f-4a8b-9c0d-1e2f3a4b5c6d"
+      },
+      "body": "{\"error\":{\"code\":\"scope_required\",\"message\":\"This key needs the entitlements:read scope.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 403,
+        "code": "scope_required",
+        "message": "This key needs the entitlements:read scope.",
+        "requestId": "7d9f1b3d-5e6f-4a8b-9c0d-1e2f3a4b5c6d",
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "credential-not-allowed",
+      "why": "403 credential_not_allowed is an ordinary ApiError.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 403,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"credential_not_allowed\",\"message\":\"This route does not take a customer token.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 403,
+        "code": "credential_not_allowed",
+        "message": "This route does not take a customer token.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "unauthorised-with-key",
+      "why": "A 401 for a fixed key fails the call with its code and message.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"unauthorised\",\"message\":\"That API key is not valid.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 401,
+        "code": "unauthorised",
+        "message": "That API key is not valid.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "idempotency-mismatch-carries-key",
+      "why": "The error carries the caller's idempotency key, so the caller can see which key clashed.",
+      "call": {
+        "method": "recordUsage",
+        "customer": "test_1001",
+        "feature": "ai_credits",
+        "amount": 1,
+        "idempotencyKey": "job-2026-07-01-0042"
+      },
+      "status": 422,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"idempotency_mismatch\",\"message\":\"That idempotency key was used for a different request.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 422,
+        "code": "idempotency_mismatch",
+        "message": "That idempotency key was used for a different request.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "job-2026-07-01-0042",
+        "payment": null
+      }
+    },
+    {
+      "name": "found-redirect",
+      "why": "A 302 is never followed and fails with http_error.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 302,
+      "headers": {
+        "location": "https://login.elsewhere.example/"
+      },
+      "body": "",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 302,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 302.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "moved-permanently-with-html",
+      "why": "A 301 is never followed and fails with http_error.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 301,
+      "headers": {
+        "content-type": "text/html",
+        "location": "https://api.elsewhere.example/customers/test_1001/entitlements/export_pdf"
+      },
+      "body": "<html><body>Moved Permanently</body></html>",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 301,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 301.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "temporary-redirect-on-write",
+      "why": "A 307 on a write, which would resend the body, is never followed, and the error keeps the idempotency key.",
+      "call": {
+        "method": "recordUsage",
+        "customer": "test_1001",
+        "feature": "ai_credits",
+        "amount": 1,
+        "idempotencyKey": "job-2026-07-01-0042"
+      },
+      "status": 307,
+      "headers": {
+        "location": "https://api.elsewhere.example/customers/test_1001/usage"
+      },
+      "body": "",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 307,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 307.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "job-2026-07-01-0042",
+        "payment": null
+      }
+    },
+    {
+      "name": "permanent-redirect-on-write",
+      "why": "A 308 on a write is never followed either.",
+      "call": {
+        "method": "recordUsage",
+        "customer": "test_1001",
+        "feature": "ai_credits",
+        "amount": 1,
+        "idempotencyKey": "job-2026-07-01-0042"
+      },
+      "status": 308,
+      "headers": {
+        "location": "https://api.elsewhere.example/customers/test_1001/usage"
+      },
+      "body": "",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 308,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 308.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": "job-2026-07-01-0042",
+        "payment": null
+      }
+    },
+    {
+      "name": "found-redirect-with-json-error-body",
+      "why": "A 3xx other than 304 is always http_error with the default message, even when its body is a JSON error.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 302,
+      "headers": {
+        "content-type": "application/json",
+        "location": "https://login.elsewhere.example/"
+      },
+      "body": "{\"error\":{\"code\":\"unauthorised\",\"message\":\"Sign in again to continue.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 302,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 302.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "temporary-redirect-with-json-error-body-on-write",
+      "why": "A 307 on a write is http_error with the default message whatever its JSON body, and keeps the idempotency key and request id.",
+      "call": {
+        "method": "recordUsage",
+        "customer": "test_1001",
+        "feature": "ai_credits",
+        "amount": 1,
+        "idempotencyKey": "job-2026-07-01-0042"
+      },
+      "status": 307,
+      "headers": {
+        "content-type": "application/json",
+        "location": "https://api.elsewhere.example/customers/test_1001/usage",
+        "x-request-id": "8b0d2f4a-6c7e-4a9b-8d1e-2f3a4b5c6d7e"
+      },
+      "body": "{\"error\":{\"code\":\"customer_not_found\",\"message\":\"No customer has the id test_1001.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 307,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 307.",
+        "requestId": "8b0d2f4a-6c7e-4a9b-8d1e-2f3a4b5c6d7e",
+        "retryAfterSeconds": null,
+        "idempotencyKey": "job-2026-07-01-0042",
+        "payment": null
+      }
+    },
+    {
+      "name": "not-modified-with-nothing-kept",
+      "why": "A 304 when the cache holds nothing for the request fails with status 304 and http_error.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 304,
+      "headers": {
+        "etag": "W/\"c3f9a1\"",
+        "x-request-id": "4c6e8a0c-2d3e-4f5a-8b6c-9d0e1f2a3b4c"
+      },
+      "body": "",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 304,
+        "code": "http_error",
+        "message": "Entitler answered with HTTP 304.",
+        "requestId": "4c6e8a0c-2d3e-4f5a-8b6c-9d0e1f2a3b4c",
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "undecodable-200-html",
+      "why": "A captive portal's 200 page is not JSON, so the answer is invalid_response with its fixed message.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html"
+      },
+      "body": "<html><head><title>Sign in to the network</title></head><body>Accept the terms to continue.</body></html>",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 200,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "undecodable-200-truncated-json",
+      "why": "A 200 cut off mid-JSON is invalid_response, and still carries requestId.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "x-request-id": "6e8a0c2e-4f5a-4b7c-9d8e-1f2a3b4c5d6e"
+      },
+      "body": "{\"customer\":\"test_1001\",\"asOf\":\"2026-07-01T09:30:00.000Z\",\"feature\":\"export_pdf\",\"type\":\"bool",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 200,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": "6e8a0c2e-4f5a-4b7c-9d8e-1f2a3b4c5d6e",
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "undecodable-200-empty",
+      "why": "An empty 200 is invalid_response.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 200,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "undecodable-200-missing-fields",
+      "why": "A 200 that is JSON but lacks every field the check requires is invalid_response.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 200,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "undecodable-200-error-shaped",
+      "why": "An error body on a 200 is not read as an error: it lacks the check's fields, so the answer is invalid_response with the fixed message.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"error\":{\"code\":\"customer_not_found\",\"message\":\"No customer has the id test_1001.\"}}",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 200,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    },
+    {
+      "name": "undecodable-204",
+      "why": "A 204 with no body cannot be a check, so it is invalid_response with status 204.",
+      "call": {
+        "method": "check",
+        "customer": "test_1001",
+        "feature": "export_pdf"
+      },
+      "status": 204,
+      "headers": {},
+      "body": "",
+      "outcome": {
+        "kind": "ApiError",
+        "status": 204,
+        "code": "invalid_response",
+        "message": "Entitler sent an answer this SDK cannot read.",
+        "requestId": null,
+        "retryAfterSeconds": null,
+        "idempotencyKey": null,
+        "payment": null
+      }
+    }
+  ]
+}
