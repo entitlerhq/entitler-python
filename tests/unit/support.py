@@ -109,3 +109,75 @@ class Transport:
 def ok(body: Mapping[str, Any] | None, **headers: str) -> dict[str, Any]:
     """A `200` answer."""
     return {"status": 200, "headers": headers, "body": body}
+
+
+ROUTES: list[tuple[str, str, Callable[[], dict[str, Any]]]] = []
+
+
+def _routes() -> list[tuple[str, str, Callable[[], dict[str, Any]]]]:
+    from entitler.testing import answers
+
+    held = {"hold_id": "hld_1", "expires_at": "2026-07-01T09:35:00.000Z"}
+    return [
+        ("GET", r"/customers/[^/]+/entitlements/[^/]+", answers.check),
+        ("GET", r"/customers/[^/]+/entitlements", answers.entitlements),
+        ("GET", r"/customers/[^/]+/plans", answers.customer_plans),
+        ("GET", r"/customers/[^/]+/pricing", answers.pricing),
+        ("GET", r"/customers/[^/]+/usage", answers.customer_usage),
+        ("GET", r"/customers/[^/]+/billing", answers.customer_billing),
+        ("GET", r"/customers/snapshot-keys", answers.snapshot_keys),
+        ("GET", r"/customers", answers.customer_page),
+        ("GET", r"/customers/[^/]+", answers.customer_detail),
+        ("GET", r"/pricing", answers.pricing),
+        ("GET", r"/pricing/features", answers.feature_list),
+        ("GET", r"/keys/self", answers.credential_self),
+        ("POST", r"/customers", answers.customer_detail),
+        ("POST", r"/customers/[^/]+/usage/holds", lambda: answers.usage_result(outcome="held", **held)),
+        ("POST", r"/customers/[^/]+/usage/holds/[^/]+/settle", lambda: answers.usage_result(outcome="settled")),
+        ("DELETE", r"/customers/[^/]+/usage/holds/[^/]+", lambda: answers.usage_result(outcome="released")),
+        ("POST", r"/customers/[^/]+/usage", answers.usage_result),
+        ("DELETE", r"/customers/[^/]+/usage/[^/]+", lambda: answers.usage_result(outcome="cancelled")),
+        ("POST", r"/customers/[^/]+/meters/[^/]+/adjustments", lambda: answers.usage_result(outcome="adjusted")),
+        ("POST", r"/customers/[^/]+/snapshots", answers.issued_snapshot),
+        ("POST", r"/customers/[^/]+/tokens", answers.issued_token),
+        ("POST", r"/customers/[^/]+/subscription", answers.subscribe_step),
+        ("POST", r"/customers/[^/]+/billing-portal", answers.billing_portal),
+        ("POST", r"/customers/[^/]+/billing/sync", answers.billing_sync),
+        ("PUT", r"/customers/[^/]+/track", answers.customer_track),
+        ("POST", r"/customers/[^/]+/grants", answers.grant_change),
+        ("DELETE", r"/customers/[^/]+/grants/[^/]+", answers.grant_change),
+        ("PUT", r"/customers/[^/]+", answers.registered_customer),
+        ("PATCH", r"/customers/[^/]+", answers.customer_summary),
+        ("DELETE", r"/customers/[^/]+", lambda: {}),
+        ("POST", r"/usage/events", answers.usage_events_result),
+    ]
+
+
+def api(request: httpx.Request) -> httpx.Response:
+    """Answers any request with a complete body for its route; other writes answer a plan change."""
+    import re
+
+    from entitler.testing import answers
+
+    if not ROUTES:
+        ROUTES.extend(_routes())
+    path = request.url.path
+    for method, pattern, build in ROUTES:
+        if method == request.method and re.fullmatch(pattern, path):
+            if method == "DELETE" and pattern == r"/customers/[^/]+":
+                return httpx.Response(204)
+            if pattern == r"/usage/events":
+                sent = json.loads(request.content)["events"]
+                results = [
+                    {"index": i, "outcome": "recorded", "id": f"use_{i}", "late": False, "error": None}
+                    for i in range(len(sent))
+                ]
+                return httpx.Response(200, json=answers.usage_events_result(results=results))
+            return httpx.Response(200, json=build())
+    return httpx.Response(200, json=answers.plan_change())
+
+
+def wired(transport: Transport) -> Transport:
+    """The transport, answering every request with `api` once its queue is empty."""
+    transport.fallback = api
+    return transport

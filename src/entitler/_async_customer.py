@@ -126,32 +126,28 @@ class AsyncHold:
         return await self._act(False)
 
     async def _act(self, finish: bool) -> UsageResult:
-        if self._lock is None:
-            self._lock = anyio.Lock()
-        async with self._lock:
-            state = self._state
-            if not state.done:
-                state.done = True
-                try:
-                    state.outcome = await self._shielded(finish)
-                except BaseException as error:
-                    state.failure = error
-            if state.failure is not None:
-                raise state.failure
-            assert state.outcome is not None  # noqa: S101 - set by the first action
-            return state.outcome
-
-    async def _shielded(self, finish: bool) -> UsageResult:
         state = self._state
         seconds = self._driver.engine.timeout if state.seconds is None else state.seconds
-        answer: UsageResult | None = None
-        with anyio.move_on_after(min(seconds, MAX_WAIT), shield=True):
-            answer = await self._driver.run(state.finish() if finish else state.release())
-        if answer is not None:
-            return answer
-        if finish:
-            raise state.settlement_error() from state.timed_out()
-        raise state.timed_out()
+        if self._lock is None:
+            self._lock = anyio.Lock()
+        with anyio.move_on_after(min(seconds, MAX_WAIT), shield=True) as scope:
+            async with self._lock:
+                if not state.done:
+                    state.done = True
+                    try:
+                        state.outcome = await self._driver.run(
+                            state.finish() if finish else state.release()
+                        )
+                    except Exception as error:
+                        state.failure = error
+        if scope.cancelled_caught and state.outcome is None and state.failure is None:
+            state.failure = state.settlement_error() if finish else state.timed_out()
+            if finish:
+                state.failure.__cause__ = state.timed_out()
+        if state.failure is not None:
+            raise state.failure
+        assert state.outcome is not None  # noqa: S101 - set by the first action
+        return state.outcome
 
     async def dispose(self) -> None:
         """Settles the amount reported, else releases, unless `finish` or `release` already ran.

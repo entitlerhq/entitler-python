@@ -1090,8 +1090,24 @@ def billing_sync(o: Obj) -> BillingSync:
 
 
 def credential_self(o: Obj) -> tuple[tuple[str, ...], bool | None]:
-    """Decodes `CredentialSelf`'s scopes and, when present, its registration flag."""
+    """Decodes `CredentialSelf`, a key or a customer token: its scopes and registration."""
+    if o.has("customer"):
+        o.string("customer")
+        o.string("expiresAt")
+    else:
+        for name in ("id", "name", "kind", "orgId"):
+            o.string(name)
+        o.string_or_none("projectId")
+        o.string_or_none("environmentId")
+        o.strings("allowedOrigins")
+        o.instant("createdAt")
+        o.instant_or_none("revokedAt")
     return o.strings("scopes"), o.optional("registration", o.boolean)
+
+
+def event_error(o: Obj) -> UsageEventError:
+    """Decodes a usage batch event's error."""
+    return UsageEventError(code=o.string("code"), message=o.string("message"))
 
 
 def usage_events_result(o: Obj) -> UsageEventsResult:

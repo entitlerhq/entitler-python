@@ -609,7 +609,7 @@ class ServerOps(CustomerOps):
             Call(
                 "DELETE",
                 "",
-                lambda _o, _flag: None,
+                lambda o, _flag: _erased(o),
                 timeout=call_timeout(seconds),
                 query={"erase": "true"},
                 idempotency_key=key_or_new(key),
@@ -827,6 +827,11 @@ class ServerOps(CustomerOps):
         )
 
 
+def _erased(o: Obj) -> None:
+    if o.data:
+        d.customer_summary(o)
+
+
 def _text(value: object) -> str | None:
     return None if value is None else str(value)
 
@@ -857,7 +862,7 @@ class HoldState:
         self.used: int | None = None
         self.done = False
         self.outcome: UsageResult | None = None
-        self.failure: BaseException | None = None
+        self.failure: Exception | None = None
 
     @property
     def hold_id(self) -> str:

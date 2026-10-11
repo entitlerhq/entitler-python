@@ -129,7 +129,7 @@ class Hold:
                 state.done = True
                 try:
                     state.outcome = action()
-                except BaseException as error:
+                except Exception as error:
                     state.failure = error
             if state.failure is not None:
                 raise state.failure
