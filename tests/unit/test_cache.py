@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import anyio
@@ -118,8 +118,43 @@ def test_a_304_renews_the_entry_and_keeps_headers_it_leaves_out(
     (entry,) = store.entries.values()
     assert entry.etag == '"v2"'
     assert entry.cache_control == "private, max-age=60"
-    assert entry.received_at == datetime.fromtimestamp(clock.now, UTC)
+    renewed = entry.received_at - datetime.fromtimestamp(clock.now, UTC)
+    assert timedelta(0) <= renewed <= timedelta(microseconds=1)
     assert store.ttls == [86400 + 60, 86400 + 60]
+
+
+def test_with_a_clock_that_never_moves_a_read_answered_after_a_write_stays_fresh(
+    transport: Transport, clock: Clock
+) -> None:
+    client = server(transport)
+    transport.answers = [ok(answers.usage_result()), ok(CHECK, **FRESH)]
+    customer = client.customer("u")
+    customer.record_usage(Feature.metered("ai_credits"), 1, idempotency_key="k")
+    customer.check("export_pdf")
+    customer.check("export_pdf")
+    assert len(transport.requests) == 2
+
+
+def test_an_answer_exactly_max_age_old_is_not_fresh(transport: Transport, clock: Clock) -> None:
+    store = Store()
+    client = server(transport, cache=store)
+    transport.answers = [ok(CHECK, **FRESH), {"status": 304}]
+    client.customer("u").check("export_pdf")
+    (entry,) = store.entries.values()
+    clock.now = entry.received_at.timestamp() + 60
+    client.customer("u").check("export_pdf")
+    assert len(transport.requests) == 2
+
+
+def test_a_receipt_ahead_of_the_clock_never_counts_as_negative_age(
+    transport: Transport, clock: Clock
+) -> None:
+    client = server(transport)
+    stale_on_arrival = {"ETag": '"v1"', "Cache-Control": "max-age=60", "Age": "60"}
+    transport.answers = [ok(CHECK, **stale_on_arrival), {"status": 304}]
+    client.customer("u").check("export_pdf")
+    client.customer("u").check("export_pdf")
+    assert len(transport.requests) == 2
 
 
 def test_a_304_with_nothing_kept_fails(transport: Transport) -> None:

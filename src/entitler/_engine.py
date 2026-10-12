@@ -8,7 +8,6 @@ async driver; only I/O and sleeping differ.
 from __future__ import annotations
 
 import contextlib
-import math
 import platform
 import re
 import sys
@@ -16,7 +15,7 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Generic, TypeVar, cast
 
 from . import _clock
@@ -32,7 +31,7 @@ from ._errors import (
     error_code,
     stands_in,
 )
-from ._values import canonical_json, encode, sha256_hex, utc
+from ._values import EPOCH, canonical_json, encode, sha256_hex
 from ._version import __version__
 
 T = TypeVar("T")
@@ -319,11 +318,24 @@ class Engine:
         self.extra_headers = extra_headers
         self.closed = False
         self._lock = threading.Lock()
-        self._generations: OrderedDict[str, tuple[int, float]] = OrderedDict()
+        self._generations: OrderedDict[str, tuple[int, int]] = OrderedDict()
         self._counter = 0
-        self._forgotten_until = -math.inf
+        self._forgotten_until = -1
+        self._stamp_lock = threading.Lock()
+        self._last_stamp = -1
         self._down_until = 0.0
         self._probing = False
+
+    def _stamp(self) -> int:
+        """A time in whole microseconds since 1970 that moves forward on every reading.
+
+        It is the clock's reading, or a microsecond past the last stamp when the clock has not
+        passed it, so a write and the read answered after it order even on a coarse clock.
+        """
+        with self._stamp_lock:
+            stamp = max(round(_clock.now() * 1_000_000), self._last_stamp + 1)
+            self._last_stamp = stamp
+            return stamp
 
     def ensure_open(self) -> None:
         """Raises the closed error once the client is closed."""
@@ -364,7 +376,7 @@ class Engine:
         self, call: Call[T], url: str, headers: dict[str, str], auth: Authorised
     ) -> Gen[Answer[T]]:
         key = cache_key(call.method, url, auth, headers)
-        started = _clock.now()
+        started = self._stamp()
         generation = self._generation(call.customer)
         kept = yield from self._get(key)
         now = _clock.now()
@@ -402,7 +414,7 @@ class Engine:
             if probe:
                 self._probing = False
         unchanged = self._generation(call.customer) == generation
-        received_at = _clock.now() if unchanged and self._forgotten_until < started else started
+        received_at = self._stamp() if unchanged and self._forgotten_until < started else started
         entry = _entry(received, kept, received_at)
         if not _directive(entry.cache_control, "no-store") and (
             entry.etag is not None or max_age(entry.cache_control) is not None
@@ -431,7 +443,7 @@ class Engine:
     def _bump(self, customer: str) -> None:
         with self._lock:
             self._counter += 1
-            self._generations[customer] = (self._counter, _clock.now())
+            self._generations[customer] = (self._counter, self._stamp())
             self._generations.move_to_end(customer)
             if len(self._generations) > TRACKED_CUSTOMERS:
                 _, (_, at) = self._generations.popitem(last=False)
@@ -441,8 +453,9 @@ class Engine:
         seconds = max_age(entry.cache_control)
         if seconds is None or _directive(entry.cache_control, "no-cache"):
             return False
-        received = entry.received_at.timestamp()
-        if now - received + (entry.age or 0) >= seconds or received <= self._forgotten_until:
+        received = _microseconds(entry.received_at)
+        since = max(0.0, now - received / 1_000_000)
+        if since + (entry.age or 0) >= seconds or received <= self._forgotten_until:
             return False
         found = None if customer is None else self._generations.get(customer)
         return found is None or found[1] < received
@@ -534,8 +547,12 @@ def cache_key(method: str, url: str, auth: Authorised, headers: Mapping[str, str
     )
 
 
-def _entry(received: Received, kept: CacheEntry | None, received_at: float) -> CacheEntry:
-    at = utc(received_at)
+def _microseconds(instant: datetime) -> int:
+    return (instant - EPOCH) // timedelta(microseconds=1)
+
+
+def _entry(received: Received, kept: CacheEntry | None, received_at: int) -> CacheEntry:
+    at = EPOCH + timedelta(microseconds=received_at)
     headers = received.headers
     if received.status == 304 and kept is not None:
         age = _age(headers)
