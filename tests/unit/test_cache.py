@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import threading
 import time
@@ -32,6 +33,10 @@ from .support import KEY, Clock, Transport, ok
 CHECK = answers.check()
 FRESH = {"ETag": '"v1"', "Cache-Control": "private, max-age=60"}
 METER = {"ETag": '"v1"', "Cache-Control": "private, no-cache"}
+
+
+def server_with(http: httpx.Client) -> EntitlerServer:
+    return EntitlerServer(KEY, http_client=http, max_retries=0)
 
 
 def server(transport: Transport, **options: Any) -> EntitlerServer:
@@ -605,3 +610,124 @@ def test_header_numbers_saturate_however_long(transport: Transport) -> None:
     transport.answers = [{"status": 304}]
     assert client.customer("w").check("export_pdf").entitled
     assert transport.requests[-1].headers["If-None-Match"] == '"v2"'
+
+
+class _WriteInFlight:
+    """A transport whose write waits until released, and whose read can wait for the write."""
+
+    def __init__(self, outcome: str, read_after_settle: bool) -> None:
+        self.outcome = outcome
+        self.read_after_settle = read_after_settle
+        self.write_entered = anyio.Event()
+        self.release = anyio.Event()
+        self.settled = anyio.Event()
+        self.read_arrived = anyio.Event()
+        self.reads = 0
+
+    async def handle(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            self.reads += 1
+            self.read_arrived.set()
+            if self.read_after_settle and self.reads == 1:
+                await self.settled.wait()
+            if self.reads > 1:
+                return httpx.Response(304, headers=FRESH, request=request)
+            return httpx.Response(200, json=CHECK, headers=FRESH, request=request)
+        self.write_entered.set()
+        await self.release.wait()
+        if self.outcome == "fails":
+            return httpx.Response(500, json=answers.error("internal"), request=request)
+        return httpx.Response(200, json=answers.usage_result(), request=request)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("outcome", ["succeeds", "fails", "is cancelled"])
+@pytest.mark.parametrize("read_after_settle", [False, True], ids=["before", "after"])
+async def test_a_read_during_a_write_is_never_kept_fresh(
+    outcome: str, read_after_settle: bool
+) -> None:
+    flight = _WriteInFlight(outcome, read_after_settle)
+    http = httpx.AsyncClient(transport=httpx.MockTransport(flight.handle))
+    client = AsyncEntitlerServer(KEY, http_client=http, max_retries=0)
+    customer = client.customer("u")
+    write_scope = anyio.CancelScope()
+    written = anyio.Event()
+
+    async def write() -> None:
+        try:
+            with write_scope, contextlib.suppress(APIError):
+                await customer.record_usage(Feature.metered("ai_credits"), 1, idempotency_key="k")
+        finally:
+            written.set()
+
+    async def settle() -> None:
+        if outcome == "is cancelled":
+            write_scope.cancel()
+        else:
+            flight.release.set()
+
+    async with anyio.create_task_group() as group:
+        group.start_soon(write)
+        await flight.write_entered.wait()
+        if read_after_settle:
+            group.start_soon(customer.check, "export_pdf")
+            await flight.read_arrived.wait()
+            await settle()
+            await written.wait()
+            flight.settled.set()
+        else:
+            await customer.check("export_pdf")
+            await settle()
+    await customer.check("export_pdf")
+    assert flight.reads == 2
+    await client.aclose()
+
+
+@pytest.mark.parametrize("outcome", ["succeeds", "fails"])
+@pytest.mark.parametrize("read_after_settle", [False, True], ids=["before", "after"])
+def test_a_blocking_read_during_a_write_is_never_kept_fresh(
+    outcome: str, read_after_settle: bool
+) -> None:
+    entered, release, settled = threading.Event(), threading.Event(), threading.Event()
+    read_arrived = threading.Event()
+    reads: list[int] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            reads.append(1)
+            read_arrived.set()
+            if read_after_settle and len(reads) == 1:
+                settled.wait(5)
+            if len(reads) > 1:
+                return httpx.Response(304, headers=FRESH, request=request)
+            return httpx.Response(200, json=CHECK, headers=FRESH, request=request)
+        entered.set()
+        release.wait(5)
+        if outcome == "fails":
+            return httpx.Response(500, json=answers.error("internal"), request=request)
+        return httpx.Response(200, json=answers.usage_result(), request=request)
+
+    client = server_with(httpx.Client(transport=httpx.MockTransport(handle)))
+    customer = client.customer("u")
+
+    def write() -> None:
+        with contextlib.suppress(APIError):
+            customer.record_usage(Feature.metered("ai_credits"), 1, idempotency_key="k")
+
+    writer = threading.Thread(target=write)
+    writer.start()
+    entered.wait(5)
+    if read_after_settle:
+        reader = threading.Thread(target=customer.check, args=("export_pdf",))
+        reader.start()
+        read_arrived.wait(5)
+        release.set()
+        writer.join(5)
+        settled.set()
+        reader.join(5)
+    else:
+        customer.check("export_pdf")
+        release.set()
+        writer.join(5)
+    customer.check("export_pdf")
+    assert len(reads) == 2

@@ -350,11 +350,24 @@ class Engine:
             self.on_error(error)
 
     def send(self, call: Call[T]) -> Gen[Answer[T]]:
-        """Sends a call, through the cache when it reads through it."""
+        """Sends a call, through the cache when it reads through it.
+
+        A write bumps its customers before it is sent and again once it settles, whatever the
+        outcome, so a read that started while it was in flight is never kept as fresh.
+        """
         self.ensure_open()
+        self._bump_all(call)
+        try:
+            return (yield from self._send(call))
+        finally:
+            self._bump_all(call)
+
+    def _bump_all(self, call: Call[Any]) -> None:
         if self.cached:
             for customer in call.changes:
                 self._bump(customer)
+
+    def _send(self, call: Call[T]) -> Gen[Answer[T]]:
         url = self._url(call)
         headers = self._headers(call)
         auth: Authorised = OPEN if call.open else (yield Authorise())
