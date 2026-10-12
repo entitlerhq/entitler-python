@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -523,3 +524,13 @@ def test_decoding_never_depends_on_content_type(transport: Transport) -> None:
     transport.answers = [html]
     client = EntitlerServer(KEY, http_client=transport.client(), max_retries=0)
     assert client.customer("u").check("sso").entitled
+
+
+def test_instants_at_both_ends_of_the_calendar_convert_on_every_platform() -> None:
+    from entitler._values import utc
+
+    first = datetime(1, 1, 1, tzinfo=UTC)
+    last = datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC)
+    assert utc(first.timestamp()) == first
+    assert utc(last.timestamp()) == last
+    assert utc(1_782_898_200.25) == datetime(2026, 7, 1, 9, 30, 0, 250000, tzinfo=UTC)

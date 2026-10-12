@@ -7,7 +7,7 @@ import json
 import math
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
 MAX_SAFE = 2**53 - 1
@@ -139,6 +139,18 @@ def seconds(value: object, message: str) -> float:
     if math.isnan(value) or value < 0:
         raise ValueError(message)
     return float(value)
+
+
+EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def utc(seconds: float) -> datetime:
+    """Seconds since 1970 as an aware UTC `datetime`, on every platform.
+
+    `datetime.fromtimestamp` asks the platform, and Windows refuses instants near the years 1 and
+    9999 that snapshots and answers may hold; arithmetic on `EPOCH` covers the whole range.
+    """
+    return EPOCH + timedelta(seconds=seconds)
 
 
 def instant(value: object, message: str) -> str:

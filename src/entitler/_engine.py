@@ -32,7 +32,7 @@ from ._errors import (
     error_code,
     stands_in,
 )
-from ._values import canonical_json, encode, sha256_hex
+from ._values import canonical_json, encode, sha256_hex, utc
 from ._version import __version__
 
 T = TypeVar("T")
@@ -535,7 +535,7 @@ def cache_key(method: str, url: str, auth: Authorised, headers: Mapping[str, str
 
 
 def _entry(received: Received, kept: CacheEntry | None, received_at: float) -> CacheEntry:
-    at = datetime.fromtimestamp(received_at, UTC)
+    at = utc(received_at)
     headers = received.headers
     if received.status == 304 and kept is not None:
         age = _age(headers)

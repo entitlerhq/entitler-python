@@ -35,6 +35,7 @@ from .._clients import EntitlerServer
 from .._customer import ServerCustomer
 from .._errors import APIError
 from .._ops import ServerOps
+from .._values import utc
 from . import answers
 
 __all__ = [
@@ -387,9 +388,7 @@ class _Api:
             hold.state = "expired"
 
     def _hold_result(self, hold: _Hold, outcome: str, meter_change: int = 0) -> Json:
-        from datetime import UTC, datetime
-
-        expires = answers.instant(datetime.fromtimestamp(hold.expires, UTC))
+        expires = answers.instant(utc(hold.expires))
         return self._result(
             hold.feature,
             outcome=outcome,

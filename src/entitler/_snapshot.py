@@ -15,7 +15,7 @@ from . import _clock
 from ._decode import DecodeError, Obj, claimed_entitlement, track
 from ._errors import SnapshotError, SnapshotErrorCode
 from ._models import Entitlement, Entitlements, EnvironmentRef, SnapshotKey, SnapshotKeys, TrackRef
-from ._values import format_instant, trim, whole
+from ._values import format_instant, trim, utc, whole
 
 DEFAULT_ISSUER = "https://api.entitler.dev/customers"
 _SEGMENT = re.compile(r"[A-Za-z0-9_-]*")
@@ -196,7 +196,7 @@ def verify_snapshot(
     signed = claims.environment
     entitlements = Entitlements(
         customer=claims.sub,
-        as_of=datetime.fromtimestamp(issued, UTC),
+        as_of=utc(issued),
         entitlements=claims.entitlements,
         environment=signed,
         track=claims.track,
@@ -213,13 +213,13 @@ def verify_snapshot(
         release=claims.release,
         change=claims.change,
         testers=claims.testers,
-        expires_at=datetime.fromtimestamp(expires, UTC),
+        expires_at=utc(expires),
         entitlements=entitlements,
     )
 
 
 def _text(seconds: int) -> str:
-    return format_instant(datetime.fromtimestamp(seconds, UTC))
+    return format_instant(utc(seconds))
 
 
 @dataclass(frozen=True, slots=True)
