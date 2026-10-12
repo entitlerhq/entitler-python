@@ -1,0 +1,681 @@
+{
+  "description": "Token refresh timing, unreadable tokens and closing (sections 7.5, 4.3 and 4.4). Build a new in-app client for each case, with a token provider that answers token for a first request at receivedAt: a customer token provider, or, when key is given, an identity token provider beside that publishable key. The client trims the provider's answer of spaces, tabs, carriage returns and line feeds, as it trims a constructor credential. When outcome is { \"kind\": \"TokenError\" }, the trimmed token is blank or unreadable and that first request fails with a TokenError. Otherwise the first request sends outcome.requestHeaders: Authorization is Bearer and the trimmed token for a customer token provider, while for an identity token provider it is Bearer and key, and Entitler-Identity-Token holds the trimmed token. A later request then starts at now, and asksProvider says whether the client asks the provider for a new token before sending it. It does when the kept token expires within the smaller of 60 seconds and half its lifetime, the edge included, measured from iat to exp, or from receivedAt to exp when iat is null. close, where present, is how many times the case closes the client between the two requests, since closing twice is safe: the later request then fails before any request with outcome.later, { \"kind\": \"ClosedError\", \"message\": … }, the language's error for a closed object, and asksProvider is false. iat and exp, given for readable tokens only, are the claims in whole seconds since 1970; signatures are placeholders that no client verifies. Close each client when its case ends.",
+  "spec": "7.5, 4.3, 4.4",
+  "cases": [
+    {
+      "name": "sixty-second-token-same-instant",
+      "why": "A 60-second token refreshes within 30 seconds of exp, half its lifetime, so another request at the instant of receipt keeps it.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898260,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "sixty-second-token-just-outside-half-life",
+      "why": "30.001 seconds before exp is outside the 30-second window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898260,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:29.999Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "sixty-second-token-on-the-edge",
+      "why": "Exactly 30 seconds before exp is on the edge of the 30-second window, and the edge is included, so the client asks the provider.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898260,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:30.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "sixty-second-token-just-inside-half-life",
+      "why": "29.999 seconds before exp is inside the 30-second window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898260,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:30.001Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "sixty-second-token-one-second-left",
+      "why": "A 60-second token with one second left is refreshed.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898260,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:59.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "sixty-second-token-expired",
+      "why": "A kept token past exp is refreshed.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898260,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:31:01.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "hour-token-half-way",
+      "why": "A 3600-second token refreshes only within 60 seconds of exp, the smaller of 60 seconds and half its lifetime.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782901800,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T10:00:00.000Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "hour-token-just-outside-sixty-seconds",
+      "why": "60.001 seconds before exp is outside the 60-second window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782901800,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T10:28:59.999Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "hour-token-on-the-edge",
+      "why": "Exactly 60 seconds before exp is on the edge of the 60-second window, which is included, so the client asks the provider.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782901800,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T10:29:00.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "hour-token-just-inside-sixty-seconds",
+      "why": "59.999 seconds before exp is inside the 60-second window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782901800,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T10:29:00.001Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "hour-token-one-second-left",
+      "why": "A 3600-second token with one second left is refreshed.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782901800,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T10:29:59.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "no-iat-measured-from-receipt-just-outside",
+      "why": "Without iat the lifetime runs from receipt: 59.75 seconds, so the window is 29.875 seconds, and 29.876 seconds before exp is outside it.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk4MjYwfQ.placeholder-signature-not-verified",
+      "iat": null,
+      "exp": 1782898260,
+      "receivedAt": "2026-07-01T09:30:00.250Z",
+      "now": "2026-07-01T09:30:30.124Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk4MjYwfQ.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "no-iat-measured-from-receipt-on-the-edge",
+      "why": "Without iat, exactly 29.875 seconds before exp is on the edge of the window measured from receipt, which is included.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk4MjYwfQ.placeholder-signature-not-verified",
+      "iat": null,
+      "exp": 1782898260,
+      "receivedAt": "2026-07-01T09:30:00.250Z",
+      "now": "2026-07-01T09:30:30.125Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk4MjYwfQ.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "no-iat-measured-from-receipt-just-inside",
+      "why": "29.874 seconds before exp is inside the 29.875-second window measured from receipt.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk4MjYwfQ.placeholder-signature-not-verified",
+      "iat": null,
+      "exp": 1782898260,
+      "receivedAt": "2026-07-01T09:30:00.250Z",
+      "now": "2026-07-01T09:30:30.126Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk4MjYwfQ.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "no-iat-long-token-just-outside",
+      "why": "A 900-second token without iat refreshes within 60 seconds of exp, and 60.001 seconds before is outside.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk5MTAwfQ.placeholder-signature-not-verified",
+      "iat": null,
+      "exp": 1782899100,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:43:59.999Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk5MTAwfQ.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "no-iat-long-token-just-inside",
+      "why": "59.999 seconds before exp is inside the 60-second window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk5MTAwfQ.placeholder-signature-not-verified",
+      "iat": null,
+      "exp": 1782899100,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:44:00.001Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk5MTAwfQ.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "no-iat-expired-at-receipt",
+      "why": "A token without iat that had already expired when it arrived served only the request that received it; the next request asks again.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk4MjAwfQ.placeholder-signature-not-verified",
+      "iat": null,
+      "exp": 1782898200,
+      "receivedAt": "2026-07-01T09:30:10.000Z",
+      "now": "2026-07-01T09:30:10.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiZXhwIjoxNzgyODk4MjAwfQ.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "iat-before-receipt-same-instant",
+      "why": "The lifetime runs from iat, not receipt: 100 seconds, so the window is 50 seconds and 30 seconds left is inside it, although measuring from receipt would give a 15-second window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMDB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898300,
+      "receivedAt": "2026-07-01T09:31:10.000Z",
+      "now": "2026-07-01T09:31:10.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "iat-before-receipt-later",
+      "why": "25 seconds left is inside the 50-second window measured from iat.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMDB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898300,
+      "receivedAt": "2026-07-01T09:31:10.000Z",
+      "now": "2026-07-01T09:31:15.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "iat-after-receipt",
+      "why": "With a server clock 20 seconds ahead, the lifetime still runs from iat: 60 seconds, so 35 seconds left is outside the 30-second window, although measuring from receipt would give a 40-second window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjIwLCJleHAiOjE3ODI4OTgyODB9.placeholder-signature-not-verified",
+      "iat": 1782898220,
+      "exp": 1782898280,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:45.000Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjIwLCJleHAiOjE3ODI4OTgyODB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "two-minute-token-just-outside",
+      "why": "For a 120-second token both limits are 60 seconds, and 60.001 seconds before exp is outside.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMjB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898320,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:59.999Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMjB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "two-minute-token-just-inside",
+      "why": "59.999 seconds before exp is inside the 60-second window of a 120-second token.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMjB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898320,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:31:00.001Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMjB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "token-of-119-seconds-just-outside",
+      "why": "A 119-second token has a 59.5-second window, so 59.501 seconds before exp is outside it.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMTl9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898319,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:59.499Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMTl9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "token-of-119-seconds-just-inside",
+      "why": "59.499 seconds before exp is inside the 59.5-second window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMTl9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898319,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:59.501Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgzMTl9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "two-second-token-just-outside",
+      "why": "A 2-second token has a 1-second window, so 1.001 seconds before exp is outside it.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyMDJ9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898202,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:00.999Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyMDJ9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "two-second-token-just-inside",
+      "why": "0.999 seconds before exp is inside the 1-second window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyMDJ9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898202,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:01.001Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyMDJ9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "token-expired-at-receipt-with-iat",
+      "why": "A token that had already expired when it arrived served only the request that received it; the next request asks again.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk2NDAwLCJleHAiOjE3ODI4OTgyMDB9.placeholder-signature-not-verified",
+      "iat": 1782896400,
+      "exp": 1782898200,
+      "receivedAt": "2026-07-01T09:30:10.000Z",
+      "now": "2026-07-01T09:30:11.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk2NDAwLCJleHAiOjE3ODI4OTgyMDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "day-token-two-minutes-left",
+      "why": "A day-long token is kept until 60 seconds before exp, so two minutes left keeps it.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5ODQ2MDB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782984600,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-02T09:28:00.000Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5ODQ2MDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "day-token-thirty-seconds-left",
+      "why": "30 seconds left is inside the 60-second window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5ODQ2MDB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782984600,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-02T09:29:30.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5ODQ2MDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "provider-token-with-surrounding-whitespace",
+      "why": "A provider answer with a tab, spaces, a carriage return and a line feed around the token is trimmed as a constructor credential is, so the client reads and sends the trimmed token.",
+      "token": "\t eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified \r\n",
+      "iat": 1782898200,
+      "exp": 1782901800,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T10:00:00.000Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI5MDE4MDB9.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "blank-token",
+      "why": "A provider answer that is empty is blank, so the call fails with a TokenError.",
+      "token": "",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "whitespace-token",
+      "why": "A provider answer of spaces only is blank, so the call fails with a TokenError.",
+      "token": "   ",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "whitespace-token-of-tabs-and-line-breaks",
+      "why": "A provider answer of a space, a tab, a carriage return and a line feed trims to nothing, so it is blank and the call fails with a TokenError.",
+      "token": " \t\r\n",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "two-segments",
+      "why": "A token of two segments is unreadable, so the call fails with a TokenError.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "four-segments",
+      "why": "A token of four segments is unreadable, so the call fails with a TokenError.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "payload-not-base64url",
+      "why": "A middle segment with a character outside the base64url alphabet is unreadable, although a lenient decoder that skips it would read valid claims.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJp*c3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "payload-not-json",
+      "why": "A middle segment that is base64url of text that is not JSON is unreadable.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.aWF0PTE3ODI4OTgyMDAmZXhwPTE3ODI4OTgyNjA.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "payload-a-json-array",
+      "why": "A middle segment that is base64url of a JSON array, not an object, is unreadable.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.WzE3ODI4OTgyMDAsMTc4Mjg5ODI2MF0.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "payload-empty",
+      "why": "An empty middle segment holds no JSON object, so the token is unreadable.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9..placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "exp-missing",
+      "why": "A token without exp is unreadable, since the client cannot tell when it expires.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwfQ.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "exp-a-fraction",
+      "why": "An exp that is not a whole number is unreadable, never rounded or truncated.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjAuNX0.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "exp-a-string",
+      "why": "An exp that is a string of digits, not a JSON integer, is unreadable.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOiIxNzgyODk4MjYwIn0.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "iat-a-string",
+      "why": "An iat that is present but a string is unreadable, never treated as missing.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoiMTc4Mjg5ODIwMCIsImV4cCI6MTc4Mjg5ODI2MH0.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "iat-a-fraction",
+      "why": "An iat that is present but not a whole number is unreadable.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLjUsImV4cCI6MTc4Mjg5ODI2MH0.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "iat-equal-to-exp",
+      "why": "An iat equal to exp is not before it, so the token is unreadable.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjYwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "iat-after-exp",
+      "why": "An iat after exp is unreadable, never a token to keep.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MzIwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "identity-provider-hour-token-half-way",
+      "why": "An identity token provider follows the same rule as a customer token provider, so a 3600-second identity token is kept half way through its lifetime, and the first request sends it as Entitler-Identity-Token beside Bearer and the publishable key.",
+      "key": "ent_pk_test_conformance_publishable_key",
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782901800,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T10:00:00.000Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer ent_pk_test_conformance_publishable_key",
+          "Entitler-Identity-Token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "identity-provider-hour-token-on-the-edge",
+      "why": "Exactly 60 seconds before exp is on the edge of the window for an identity token too, and the edge is included, so the client asks the identity token provider again.",
+      "key": "ent_pk_test_conformance_publishable_key",
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782901800,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T10:29:00.000Z",
+      "outcome": {
+        "asksProvider": true,
+        "requestHeaders": {
+          "Authorization": "Bearer ent_pk_test_conformance_publishable_key",
+          "Entitler-Identity-Token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "identity-provider-token-with-surrounding-whitespace",
+      "why": "An identity token provider answer with a line feed, a space and a tab around the token is trimmed as a constructor credential is, so Entitler-Identity-Token holds the trimmed token.",
+      "key": "ent_pk_test_conformance_publishable_key",
+      "token": "\neyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.placeholder-signature-not-verified \t",
+      "iat": 1782898200,
+      "exp": 1782901800,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T10:00:00.000Z",
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer ent_pk_test_conformance_publishable_key",
+          "Entitler-Identity-Token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.placeholder-signature-not-verified"
+        }
+      }
+    },
+    {
+      "name": "identity-provider-blank-token",
+      "why": "An identity token provider answer that trims to nothing is blank, so the call fails with a TokenError.",
+      "key": "ent_pk_test_conformance_publishable_key",
+      "token": " \r\n",
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "outcome": {
+        "kind": "TokenError"
+      }
+    },
+    {
+      "name": "closed-client-asks-no-provider",
+      "why": "A client closed twice after its first request fails the later request with the closed-client error before any request, and never asks the provider, although its kept token is within the refresh window.",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified",
+      "iat": 1782898200,
+      "exp": 1782898260,
+      "receivedAt": "2026-07-01T09:30:00.000Z",
+      "now": "2026-07-01T09:30:45.000Z",
+      "close": 2,
+      "outcome": {
+        "asksProvider": false,
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6ImN1c3RvbWVyK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwiYXVkIjoiZW50aXRsZXItY3VzdG9tZXJzIiwic3ViIjoidGVzdF8xMDAxIiwiaWF0IjoxNzgyODk4MjAwLCJleHAiOjE3ODI4OTgyNjB9.placeholder-signature-not-verified"
+        },
+        "later": {
+          "kind": "ClosedError",
+          "message": "This Entitler client is closed. Create a new one."
+        }
+      }
+    }
+  ]
+}

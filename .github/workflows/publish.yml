@@ -1,21 +1,107 @@
 name: Publish
 
-on: workflow_dispatch
+on:
+  push:
+    tags: ["v*"]
 
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  version:
+    name: Check the tag matches the version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare the tag with the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/entitler/_version.py)
+          if [ "$TAG" != "v$version" ]; then
+            echo "The tag $TAG does not match the package version $version."
+            exit 1
+          fi
+
+  ci:
+    name: CI
+    needs: version
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  build:
+    name: Build
+    needs: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uv build
+      - run: uv run --locked twine check --strict dist/*
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
   publish:
-    runs-on: ubuntu-latest
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          python-version: "3.x"
-      - run: python -m pip install build
-      - run: python -m build
-      - uses: pypa/gh-action-pypi-publish@release/v1
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  release:
+    name: GitHub release
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create the release with the changelog's notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          awk -v heading="## [$version]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for $version."
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$REPO" --title "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes-file notes.md --verify-tag
+          fi

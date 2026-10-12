@@ -1,0 +1,706 @@
+{
+  "description": "Answer cache keys and principals (section 7.3). Each case is one read through the cache. Build the client principalKind names from each credential exactly as given, before it is trimmed: for key, the server client from a secret key in credential, or the key-only in-app client from a publishable key (one starting ent_pk_ once trimmed); for customer-token, the in-app client from the customer token in credential; for identity, the in-app client from key and identityToken. Give it built.baseUrl and, for an in-app client, visitor, or clientVisitor when that is present. Make the read built.route names with built.params: /customers/{id}/entitlements/{feature} is check(feature), /customers/{id}/entitlements is entitlements(), /customers/{id}/plans is plans(), /customers/{id}/pricing is the customer's pricing(), /pricing is the client's pricing() and /pricing/features is features(); {id} is the literal me on the in-app client. A read is given visitor on the server client when it is not null, and on an in-app client only when clientVisitor is present; a server customer's check is given asOf when it is not null, as asOfInput when that is present (an instant with an offset, which the SDK formats as asOf). On the server client, give it a custom cache store and compare the key the store is asked for with cacheKey. In-app clients take no custom store (sections 4.3 and 7.3), so on them compare the key their in-memory store is asked for, read through the unit suite's own access to the SDK's internals, never through a public option. Compare the request's Authorization, Entitler-Identity-Token, Entitler-As-Of and Entitler-Visitor headers with requestHeaders, where null means the header is not sent. principal is the lowercase hex SHA-256 of the trimmed credential, or of the trimmed key, a line feed and the trimmed identity token, and serialised is the exact JSON array text whose SHA-256 is cacheKey. A case with appliesWhere runs only where that holds: an in-app read can be given asOf only where one options type serves both clients' reads, and such a case gives asOfInput to the in-app check, which fails before any request with outcome's argument error, so no key is asked for.",
+  "spec": "7.3, 6.1, 6.6",
+  "cases": [
+    {
+      "name": "server-key-check",
+      "why": "A server check with neither as-of nor visitor sends neither header and puts JSON null in both places.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/user_42/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOf": null,
+      "visitor": null,
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/user_42/entitlements/export_pdf\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",null,null]",
+        "cacheKey": "f05e886aeabc9110d52628fd7f42c9e491bbe90b964fe13e5ea677b1f60feaa5",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": null
+        }
+      }
+    },
+    {
+      "name": "server-key-check-with-as-of",
+      "why": "The Entitler-As-Of header value takes the as-of place, so reads at another instant never share an entry.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/user_42/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOf": "2026-07-01T09:30:00.000Z",
+      "visitor": null,
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/user_42/entitlements/export_pdf\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",\"2026-07-01T09:30:00.000Z\",null]",
+        "cacheKey": "1198a61359e218f855b41d82c6e29b1c0aed504f3b272db7bc0a4c67bc2a08fa",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": "2026-07-01T09:30:00.000Z",
+          "Entitler-Visitor": null
+        }
+      }
+    },
+    {
+      "name": "server-key-check-with-as-of-given-with-offset",
+      "why": "As-of given with an offset is sent, and keyed, in its UTC form with milliseconds.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/user_42/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOfInput": "2026-07-01T19:30:00+10:00",
+      "asOf": "2026-07-01T09:30:00.000Z",
+      "visitor": null,
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/user_42/entitlements/export_pdf\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",\"2026-07-01T09:30:00.000Z\",null]",
+        "cacheKey": "1198a61359e218f855b41d82c6e29b1c0aed504f3b272db7bc0a4c67bc2a08fa",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": "2026-07-01T09:30:00.000Z",
+          "Entitler-Visitor": null
+        }
+      }
+    },
+    {
+      "name": "server-key-pricing",
+      "why": "Server pricing without a visitor sends no Entitler-Visitor and keys with a null visitor.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/pricing",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/pricing",
+        "params": {}
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOf": null,
+      "visitor": null,
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/pricing\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",null,null]",
+        "cacheKey": "7e6ea1aee3edda699748c52266cc56bf9b7bb745cb0ecdb82c47cda156e9e520",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": null
+        }
+      }
+    },
+    {
+      "name": "server-key-pricing-with-visitor",
+      "why": "A visitor given to server pricing is sent as Entitler-Visitor and takes the visitor place.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/pricing",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/pricing",
+        "params": {}
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOf": null,
+      "visitor": "ijJI_ZTddU-ZthDTSA3-cki98irNVuwP",
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/pricing\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",null,\"ijJI_ZTddU-ZthDTSA3-cki98irNVuwP\"]",
+        "cacheKey": "2a0f402de06b9058344788251963bc2730a6ce4bc992c00fa8634aafe3ddbf0f",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "ijJI_ZTddU-ZthDTSA3-cki98irNVuwP"
+        }
+      }
+    },
+    {
+      "name": "server-key-features",
+      "why": "The feature list is a read through the cache on the server client.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/pricing/features",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/pricing/features",
+        "params": {}
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOf": null,
+      "visitor": null,
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/pricing/features\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",null,null]",
+        "cacheKey": "826ca674bb7242bd7de31419a8e38c322b6312a8765676539c3f6ac88845bd8e",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": null
+        }
+      }
+    },
+    {
+      "name": "server-key-entitlements-percent-encoded-id",
+      "why": "The full URL is keyed exactly as sent, with the identity-style customer id percent-encoded as one segment.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/d0123456789abcdefABCDEF%3Auser%2F42/entitlements",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements",
+        "params": {
+          "id": "d0123456789abcdefABCDEF:user/42"
+        }
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOf": null,
+      "visitor": null,
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/d0123456789abcdefABCDEF%3Auser%2F42/entitlements\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",null,null]",
+        "cacheKey": "be6279fdc4298f41c71d38b0ab73064aa8b3957fc2a0ee11541e58ebc2a051c1",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": null
+        }
+      }
+    },
+    {
+      "name": "server-key-check-apostrophe-and-unreserved-punctuation-in-id",
+      "why": "The URL is keyed as the SDK builds it, so the apostrophe, brackets, ! * and ~ that encodeURIComponent leaves stay in the array unescaped.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/o'brien(test)!*~/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "o'brien(test)!*~",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOf": null,
+      "visitor": null,
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/o'brien(test)!*~/entitlements/export_pdf\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",null,null]",
+        "cacheKey": "5710ab3448db24b58bd88585ad526ccec33ae9844461c1bf4b9b3be2f1df7fed",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": null
+        }
+      }
+    },
+    {
+      "name": "server-key-with-surrounding-whitespace",
+      "why": "The key is trimmed before it is sent and hashed, so a key given with surrounding spaces, a tab and a line break is sent and keyed like the trimmed key.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/user_42/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "key",
+      "credential": " \tent_test_conformance_server_key\r\n",
+      "asOf": null,
+      "visitor": null,
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/user_42/entitlements/export_pdf\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",null,null]",
+        "cacheKey": "f05e886aeabc9110d52628fd7f42c9e491bbe90b964fe13e5ea677b1f60feaa5",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": null
+        }
+      }
+    },
+    {
+      "name": "server-key-customer-plans",
+      "why": "The customer's plans are a read through the cache.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/user_42/plans",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/plans",
+        "params": {
+          "id": "user_42"
+        }
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOf": null,
+      "visitor": null,
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/user_42/plans\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",null,null]",
+        "cacheKey": "d23ce9e2802bfa5fab08b035ea2d009f22834c274db32876fb95e06191bb8aae",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": null
+        }
+      }
+    },
+    {
+      "name": "server-key-customer-pricing-with-visitor",
+      "why": "Customer pricing with a visitor keys with that visitor.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/user_42/pricing",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/pricing",
+        "params": {
+          "id": "user_42"
+        }
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOf": null,
+      "visitor": "ijJI_ZTddU-ZthDTSA3-cki98irNVuwP",
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/user_42/pricing\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",null,\"ijJI_ZTddU-ZthDTSA3-cki98irNVuwP\"]",
+        "cacheKey": "36d42a2cee5c0feb8390a8a81a19a9c3c9a7252564b2b3d07e638fa9034125f1",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "ijJI_ZTddU-ZthDTSA3-cki98irNVuwP"
+        }
+      }
+    },
+    {
+      "name": "server-key-base-url-with-path",
+      "why": "A base URL with a path prefix is part of the full URL.",
+      "method": "GET",
+      "url": "https://proxy.example.com/entitler/customers/user_42/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://proxy.example.com/entitler",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "user_42",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "key",
+      "credential": "ent_test_conformance_server_key",
+      "asOf": null,
+      "visitor": null,
+      "outcome": {
+        "principal": "09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://proxy.example.com/entitler/customers/user_42/entitlements/export_pdf\",\"key\",\"09f5790657d95e42c9857872591d2419b39fbe8f16b3f2f696ffa5b2f8032bec\",null,null]",
+        "cacheKey": "fb184b1a5c213ba10001ca59998289ca73a2f2cc1b937315075e790a388a9e44",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_test_conformance_server_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": null
+        }
+      }
+    },
+    {
+      "name": "customer-token-check",
+      "why": "An in-app client with a customer token keys on the hash of the whole token and sends its visitor on every request.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/me/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "me",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "customer-token",
+      "credential": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "principal": "472dc66d059d5a1a85b7625f156d74e64dac67c0e6f8abfdaca79768835a8f45",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/me/entitlements/export_pdf\",\"customer-token\",\"472dc66d059d5a1a85b7625f156d74e64dac67c0e6f8abfdaca79768835a8f45\",null,\"0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2\"]",
+        "cacheKey": "5e8a90c1f4bd9ed47b3999645fd66edb4bd0626f98654af71c4f399c69854ce1",
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2"
+        }
+      }
+    },
+    {
+      "name": "customer-token-same-claims-other-signature",
+      "why": "Two tokens with the same claims but different signatures never share entries, since claims are not verified.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/me/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "me",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "customer-token",
+      "credential": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-two",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "principal": "a53fa9a584f9198de8b53244c1e06a8574e04e0ba5f5eab3b88dec5a799364b1",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/me/entitlements/export_pdf\",\"customer-token\",\"a53fa9a584f9198de8b53244c1e06a8574e04e0ba5f5eab3b88dec5a799364b1\",null,\"0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2\"]",
+        "cacheKey": "05e51c5293a60462d563c74097e01d960613988743d1baf44f0ca2bbec6a3f4e",
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-two",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2"
+        }
+      }
+    },
+    {
+      "name": "customer-token-with-trailing-line-feed",
+      "why": "A customer token is trimmed before it is sent and hashed, so a token given with a trailing line feed is sent and keyed like the trimmed token.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/me/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "me",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "customer-token",
+      "credential": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one\n",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "principal": "472dc66d059d5a1a85b7625f156d74e64dac67c0e6f8abfdaca79768835a8f45",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/me/entitlements/export_pdf\",\"customer-token\",\"472dc66d059d5a1a85b7625f156d74e64dac67c0e6f8abfdaca79768835a8f45\",null,\"0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2\"]",
+        "cacheKey": "5e8a90c1f4bd9ed47b3999645fd66edb4bd0626f98654af71c4f399c69854ce1",
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2"
+        }
+      }
+    },
+    {
+      "name": "customer-token-entitlements",
+      "why": "The entitlement list for the signed-in customer is keyed by its own URL.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/me/entitlements",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements",
+        "params": {
+          "id": "me"
+        }
+      },
+      "principalKind": "customer-token",
+      "credential": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "principal": "472dc66d059d5a1a85b7625f156d74e64dac67c0e6f8abfdaca79768835a8f45",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/me/entitlements\",\"customer-token\",\"472dc66d059d5a1a85b7625f156d74e64dac67c0e6f8abfdaca79768835a8f45\",null,\"0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2\"]",
+        "cacheKey": "921648c0c14685a1916daf906189137f2f363740fcce64594ddd86d0f205aa0c",
+        "requestHeaders": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2"
+        }
+      }
+    },
+    {
+      "name": "identity-check",
+      "why": "An identity client hashes the key, a line feed and the identity token.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/me/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "me",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "identity",
+      "key": "ent_pk_test_conformance_publishable_key",
+      "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "principal": "0398e7da5491fa71a9f209e61610dbfeeef93d0df7c818c716959b7347b6375d",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/me/entitlements/export_pdf\",\"identity\",\"0398e7da5491fa71a9f209e61610dbfeeef93d0df7c818c716959b7347b6375d\",null,\"0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2\"]",
+        "cacheKey": "b95b4311c29bd4d38360b4ab96eb8a0ad299536fbd997978e70ee058a9ab5bfe",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_pk_test_conformance_publishable_key",
+          "Entitler-Identity-Token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one",
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2"
+        }
+      }
+    },
+    {
+      "name": "identity-other-key-same-token",
+      "why": "The same identity token with another publishable key is another principal.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/me/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "me",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "identity",
+      "key": "ent_pk_test_conformance_other_publishable_key",
+      "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "principal": "0c213d8a5c15775bb74d5c74dc7af43578304ab49e8f6df3b4be502f73d42a60",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/me/entitlements/export_pdf\",\"identity\",\"0c213d8a5c15775bb74d5c74dc7af43578304ab49e8f6df3b4be502f73d42a60\",null,\"0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2\"]",
+        "cacheKey": "66c7624ba00b82f22e4edc8b84c7af977c8e0e04b0a3a92a2bb195ecdc64807a",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_pk_test_conformance_other_publishable_key",
+          "Entitler-Identity-Token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one",
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2"
+        }
+      }
+    },
+    {
+      "name": "identity-same-claims-other-signature",
+      "why": "Identity tokens with the same claims but different signatures never share entries.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/me/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "me",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "identity",
+      "key": "ent_pk_test_conformance_publishable_key",
+      "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-two",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "principal": "b38e49aa27f116d9431b44bd0bd0490b911d865b115e111bedee72d40812f4d2",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/me/entitlements/export_pdf\",\"identity\",\"b38e49aa27f116d9431b44bd0bd0490b911d865b115e111bedee72d40812f4d2\",null,\"0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2\"]",
+        "cacheKey": "c9b671ff44187cafc50d5f5b024a581c8209d5c373d7cc24e96fd9ade8137f0d",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_pk_test_conformance_publishable_key",
+          "Entitler-Identity-Token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-two",
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2"
+        }
+      }
+    },
+    {
+      "name": "identity-key-and-token-with-surrounding-whitespace",
+      "why": "The publishable key and the identity token are each trimmed before they are sent and hashed, so whitespace around either is sent and keyed like the trimmed pair.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/me/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "me",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "identity",
+      "key": " ent_pk_test_conformance_publishable_key\t",
+      "identityToken": "\r\neyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one\n",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "principal": "0398e7da5491fa71a9f209e61610dbfeeef93d0df7c818c716959b7347b6375d",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/customers/me/entitlements/export_pdf\",\"identity\",\"0398e7da5491fa71a9f209e61610dbfeeef93d0df7c818c716959b7347b6375d\",null,\"0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2\"]",
+        "cacheKey": "b95b4311c29bd4d38360b4ab96eb8a0ad299536fbd997978e70ee058a9ab5bfe",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_pk_test_conformance_publishable_key",
+          "Entitler-Identity-Token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one",
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2"
+        }
+      }
+    },
+    {
+      "name": "key-only-pricing",
+      "why": "The key-only in-app client's pricing() is keyed under principal kind key with the hash of its publishable key, and sends the client's visitor.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/pricing",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/pricing",
+        "params": {}
+      },
+      "principalKind": "key",
+      "credential": "ent_pk_test_conformance_publishable_key",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "principal": "fcc7715f7f379351c86aceb70b25f08fe79af946d7d721e28734508d0dcb8714",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/pricing\",\"key\",\"fcc7715f7f379351c86aceb70b25f08fe79af946d7d721e28734508d0dcb8714\",null,\"0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2\"]",
+        "cacheKey": "3f2a4d9ef20be768df40303d7b570fbe8b38b9bd5bfc0d708cd9d87bcc8513d5",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_pk_test_conformance_publishable_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2"
+        }
+      }
+    },
+    {
+      "name": "key-only-pricing-with-call-visitor",
+      "why": "A visitor given to the key-only client's pricing() replaces the client's for that request, so it is sent and keyed in the visitor place.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/pricing",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/pricing",
+        "params": {}
+      },
+      "principalKind": "key",
+      "credential": "ent_pk_test_conformance_publishable_key",
+      "clientVisitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "asOf": null,
+      "visitor": "ijJI_ZTddU-ZthDTSA3-cki98irNVuwP",
+      "outcome": {
+        "principal": "fcc7715f7f379351c86aceb70b25f08fe79af946d7d721e28734508d0dcb8714",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/pricing\",\"key\",\"fcc7715f7f379351c86aceb70b25f08fe79af946d7d721e28734508d0dcb8714\",null,\"ijJI_ZTddU-ZthDTSA3-cki98irNVuwP\"]",
+        "cacheKey": "0b3abcbe73bd7fd2763430d8a7d4f8f14972f2830866d8cf3cef9be8fe538e98",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_pk_test_conformance_publishable_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "ijJI_ZTddU-ZthDTSA3-cki98irNVuwP"
+        }
+      }
+    },
+    {
+      "name": "key-only-pricing-key-with-surrounding-whitespace",
+      "why": "A publishable key given with a tab, a space and a line break around it is trimmed before it is sent and hashed, so it is keyed like the trimmed key.",
+      "method": "GET",
+      "url": "https://api.entitler.dev/pricing",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/pricing",
+        "params": {}
+      },
+      "principalKind": "key",
+      "credential": "\tent_pk_test_conformance_publishable_key \n",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "principal": "fcc7715f7f379351c86aceb70b25f08fe79af946d7d721e28734508d0dcb8714",
+        "serialised": "[\"entitler-cache-v1\",\"GET\",\"https://api.entitler.dev/pricing\",\"key\",\"fcc7715f7f379351c86aceb70b25f08fe79af946d7d721e28734508d0dcb8714\",null,\"0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2\"]",
+        "cacheKey": "3f2a4d9ef20be768df40303d7b570fbe8b38b9bd5bfc0d708cd9d87bcc8513d5",
+        "requestHeaders": {
+          "Authorization": "Bearer ent_pk_test_conformance_publishable_key",
+          "Entitler-Identity-Token": null,
+          "Entitler-As-Of": null,
+          "Entitler-Visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2"
+        }
+      }
+    },
+    {
+      "name": "customer-token-check-given-as-of",
+      "why": "In-app reads are answered now, so an in-app check given asOf fails before any request and nothing is kept or asked for.",
+      "appliesWhere": "an in-app read can be given asOf",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/me/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "me",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "customer-token",
+      "credential": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2FwaS5lbnRpdGxlci5kZXYvY3VzdG9tZXJzIiwic3ViIjoidXNlcl80MiIsInNjb3BlcyI6WyJlbnRpdGxlbWVudHM6cmVhZCIsInVzYWdlOndyaXRlIl0sImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-customer-token-one",
+      "asOfInput": "2026-07-01T09:30:00.000Z",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass asOf only to a server customer's reads: in-app reads are answered now."
+      }
+    },
+    {
+      "name": "identity-check-given-as-of",
+      "why": "An identity client check given asOf fails before any request too.",
+      "appliesWhere": "an in-app read can be given asOf",
+      "method": "GET",
+      "url": "https://api.entitler.dev/customers/me/entitlements/export_pdf",
+      "built": {
+        "baseUrl": "https://api.entitler.dev",
+        "route": "/customers/{id}/entitlements/{feature}",
+        "params": {
+          "id": "me",
+          "feature": "export_pdf"
+        }
+      },
+      "principalKind": "identity",
+      "key": "ent_pk_test_conformance_publishable_key",
+      "identityToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUuY29tIiwiYXVkIjoiY29uZm9ybWFuY2UtYXBwIiwic3ViIjoidXNlci80MiIsImlhdCI6MTc4Mjg5ODIwMCwiZXhwIjoxNzgyOTAxODAwfQ.conformance-placeholder-signature-identity-token-one",
+      "asOfInput": "2026-07-01T09:30:00.000Z",
+      "asOf": null,
+      "visitor": "0Xml_V47ATsMekPZzs-QE3UcLQPyMPk2",
+      "outcome": {
+        "kind": "ArgumentError",
+        "message": "Pass asOf only to a server customer's reads: in-app reads are answered now."
+      }
+    }
+  ]
+}
